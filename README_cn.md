@@ -17,27 +17,10 @@ FlagOS-Robo 打通从数据采集到真机与评测平台（[FlagEval](https://g
 
 ## 快速上手🚀
 
-### 安装
-[安装](https://github.com/flagos-ai/FlagScale?tab=readme-ov-file#-setup) FlagScale.
-
-### 训练
-通过FlagScale做[训练](https://github.com/flagos-ai/FlagScale?tab=readme-ov-file#train)模型。
-
-### 离线推理
-通过FlagScale做模型[离线推理](https://github.com/flagos-ai/FlagScale/tree/main?tab=readme-ov-file#inference)。
-
-### 在线推理
-通过FlagScale做模型[在线推理](https://github.com/flagos-ai/FlagScale?tab=readme-ov-file#serve)。
-
-### 模型评估
-通过FlagScale和[FlagEval](https://flageval.baai.ac.cn/#/home)做模型[评估](https://github.com/flagos-ai/FlagScale?tab=readme-ov-file#evaluation)。
-
-
-## 支持矩阵
 | 模型 | 类型 | 模型权重 | 训练 | 离线推理 | 在线推理 | 评估 |
 |--------------|--------|--------|--------|-------------------|----------------------|---------------------------|
-| PI0 | VLA | [Huggingface](https://huggingface.co/lerobot/pi0_base) | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/pi0/README.md#training) | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/pi0/README.md#inference) | ✅ [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/pi0/README.md#service) | ❌ |
-| PI0.5 | VLA | [Huggingface]() | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/pi0_5/README.md#training) | ✅ [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/pi0_5/README.md#inference) | ✅   [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/pi0_5/README.md#serving)|  ❌ |
-| RoboBrain-2.0 | VLM | [Huggingface]() | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/flagscale/models/megatron/qwen2_5_vl/QuickStart.md) | ✅ | ✅ | ✅   [Guide](https://github.com/flagos-ai/FlagScale?tab=readme-ov-file#evaluation) |
-| RoboBrain-X0 | VLA | [Huggingface]() | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/robobrain_x0/README.md#training) | ❌ | ✅   [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/robobrain_x0/README.md#serving)| ❌ |
-| RoboBrain-X0.5 | VLA | [Huggingface](https://github.com/flagos-ai/FlagScale/blob/main/examples/robobrain_x0_5/README.md#training) | ✅︎  [Guide]() | ❌ | ✅   [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/robobrain_x0_5/README.md#serving)| ❌|
+| PI0 | VLA | [Huggingface](https://huggingface.co/lerobot/pi0_base) | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/pi0/README.md#training) | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/pi0/README.md#inference) | ✅ [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/pi0/README.md#serving) | ❌ |
+| PI0.5 | VLA | [Huggingface](https://huggingface.co/lerobot/pi05_libero_base) | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/pi0_5/README.md#training) | ✅ [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/pi0_5/README.md#inference) | ✅   [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/pi0_5/README.md#serving)|  ❌ |
+| RoboBrain-2.0 | VLM | [Huggingface](https://huggingface.co/BAAI/RoboBrain2.0-7B) | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/flagscale/models/megatron/qwen2_5_vl/QuickStart.md) | ✅ | ✅ | ✅   [Guide](https://github.com/flagos-ai/FlagScale?tab=readme-ov-file#evaluation) |
+| RoboBrain-X0 | VLA | [Huggingface](https://huggingface.co/BAAI/RoboBrain-X0-Preview) | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/robobrain_x0/README.md#training) | ❌ | ✅   [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/robobrain_x0/README.md#serving)| ❌ |
+| RoboBrain-X0.5 | VLA | ❌ | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/robobrain_x0_5/README.md#training) | ❌ | ✅   [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/robobrain_x0_5/README.md#serving)| ❌ |
