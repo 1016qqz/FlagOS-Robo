@@ -47,30 +47,71 @@ def _dump(d: Path, name: str, t) -> None:
     torch.save({name: t}, d / "step0.pt")
 
 
-def _one_ulp_up(t):
+def _one_ulp_up(t, idx: int = 0):
     out = t.clone()
     flat = out.flatten()
-    flat[0] = torch.nextafter(flat[0], torch.tensor(float("inf"), dtype=t.dtype))
+    flat[idx] = torch.nextafter(flat[idx], torch.tensor(float("inf"), dtype=t.dtype))
     return flat.reshape(t.shape)
+
+
+# Whether a reduction absorbs a 1-ULP single-element delta is INPUT-DEPENDENT,
+# not a property of the reduction. Measured in this container (torch 2.7.1+cu128,
+# 300 seeds per shape, 1 ULP bumped on element 0 of randn):
+#
+#   shape        sum() differs      -> absorbed
+#   (4, 8)         37/300 (12%)         88%
+#   (32, 32)        5/300  (2%)         98%
+#   (256, 256)      2/300  (1%)         99%
+#
+# Summary stats therefore hide the delta in the overwhelming majority of cases,
+# but not always. Both directions are pinned below using seeds chosen by that
+# MEASUREMENT, not by guesswork: an earlier version asserted universal
+# absorption on a random tensor and flaked, and two hand-built "obviously
+# absorbing" cases (all-ones, and one dominant 1e8 element) were also wrong --
+# ones(4, 8) absorbs the delta, which is the opposite of what I predicted.
+_ABSORBING_SEED = 0  # sum() identical despite a real 1-ULP difference
+_SURVIVING_SEED = 8  # sum() differs -- absorption is not guaranteed
+
+
+def _seeded_pair(seed: int, shape=(4, 8)):
+    torch.manual_seed(seed)
+    a = torch.randn(*shape)
+    return a, _one_ulp_up(a)
 
 
 class TestSummaryStatsCannotProveBitExactness:
     """The premise of the whole fix, asserted rather than assumed."""
 
-    def test_float32_sum_is_blind_to_one_ulp(self):
-        a = torch.randn(4, 8)
-        b = _one_ulp_up(a)
+    def test_float32_sum_can_be_blind_to_one_ulp(self):
+        a, b = _seeded_pair(_ABSORBING_SEED)
         assert not torch.equal(a, b), "the two tensors must actually differ"
         assert a.sum().item() == b.sum().item(), (
-            "premise: a lossy reduction absorbs a 1-ULP single-element delta. "
-            "If this ever stops holding, the elementwise path must stay anyway."
+            "premise: a lossy reduction can absorb a 1-ULP single-element delta, "
+            "so a stats-only comparison reports PASS on tensors that differ."
         )
 
     def test_mean_and_norm_are_also_blind(self):
-        a = torch.randn(4, 8)
-        b = _one_ulp_up(a)
+        a, b = _seeded_pair(_ABSORBING_SEED)
+        assert not torch.equal(a, b)
         assert a.mean().item() == b.mean().item()
         assert a.norm().item() == b.norm().item()
+
+    def test_absorption_is_not_universal(self):
+        """Honest scope: stats are UNRELIABLE, not uniformly blind.
+
+        A stats-only check is thus not merely weak but non-deterministic in what
+        it catches, which is why the tool compares elementwise instead of
+        trusting any reduction.
+        """
+        a, b = _seeded_pair(_SURVIVING_SEED)
+        assert not torch.equal(a, b)
+        assert a.sum().item() != b.sum().item()
+
+    def test_elementwise_catches_it_regardless_of_input(self):
+        """The property the tool actually relies on: no input-dependence."""
+        for seed in (_ABSORBING_SEED, _SURVIVING_SEED, 1, 2, 3, 17, 99):
+            a, b = _seeded_pair(seed)
+            assert not torch.equal(a, b), f"seed {seed}: elementwise must see it"
 
 
 class TestStrictCatchesOneUlp:

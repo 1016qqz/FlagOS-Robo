@@ -7,7 +7,7 @@
 - 环境：H800 单节点，容器 `flagos_robo_w1`（`--network host`），8×H800
 - 容器内仓库：`/workspace/FlagOS-Robo`（= host `/public-flash/zhangqq/flagos_robo_w1/FlagOS-Robo`）
 - FlagScale 参考树：`/workspace/flagscale_ref/FlagScale`，baseline `f8e9a62c499d526a6ffa47f533bcf342330b7326`
-- 复现脚本：`_scratch/acc_verbatim.sh`（组 3–6）、`_scratch/acc1_venv.sh`（组 1–2）
+- 复现脚本（随仓库交付）：`tools/acceptance/acc_verbatim.sh`（组 3–6）、`tools/acceptance/acc1_venv.sh`（组 1–2）
 
 ---
 
@@ -15,14 +15,61 @@
 
 | 组 | 验收内容 | RC | 结果 |
 |----|----------|----|------|
-| 1 | 全新 venv + `requirements/cuda/base.txt` + `pip install -e .` | 见 §1 | 见 §1 |
-| 2 | `import flagos_robo` + `get_platform()` 真卡探测 | 见 §1 | 见 §1 |
+| 1 | 全新 venv + `requirements/cuda/base.txt` + `pip install -e .` | 0 | PASS，见 §1 |
+| 2 | `import flagos_robo` + `get_platform()` 真卡探测 | 0 | PASS，见 §1 |
 | 3 | 依赖树无 Megatron（三连） | 0 | PASS（1 条交叉检查需人工裁决，见 §3） |
 | 4 | 导入闭包自洽 + 工具自检 | 0 | PASS |
 | 5 | 动态导入 / 残留文本扫描 | 0 | PASS（`examples/` 不属 W1，报 SKIP 而非 PASS） |
-| 6 | 单元测试 | 0 | PASS，161 passed |
+| 6 | 单元测试 | 0 | PASS，**176 passed** |
 
 额外：三个工具的 `--self-test` 全部 RC=0（13/13、FP control 0 误报、24/24）。
+
+---
+
+## 1–2. 全新 venv 安装 + 导入 + 真卡平台探测
+
+这一组是整份验收里**唯一在消费者环境下跑的**：`python -m venv`（不带
+`--system-site-packages`，因此**不继承**镜像里 conda env 的 torch 2.7.1），
+从 `requirements/cuda/base.txt` 全量装依赖，再 `pip install -e .`。
+复现：`bash tools/acceptance/acc1_venv.sh`。
+
+```
+=== acc1 start 2026-10-09T09:10:38Z
+=== acceptance 1: pip install -r requirements/cuda/base.txt
+RC_REQUIREMENTS=0
+=== acceptance 1b: pip install -e .
+Successfully installed flagos-robo-0.1.0.dev0
+RC_EDITABLE=0
+=== acceptance 2: import + version
+VERSION=0.1.0.dev0
+RC_IMPORT=0
+=== acceptance 2b: platform in a venv-only env
+PLATFORM=cuda nccl cuda 0
+RC_PLATFORM=0
+=== acceptance 3: purity gate inside the venv
+RC_PURITY=0
+OK: no megatron in venv pip list
+=== torch actually installed
+TORCH=2.9.0+cu128 cuda=True n=8
+RC_TORCH=0
+=== acc1 done 2026-10-09T09:28:39Z
+```
+
+两条与计划判定字面一致：`VERSION=0.1.0.dev0`、`PLATFORM=cuda nccl cuda 0`。
+
+**一条原本预期会失败的检查没有失败。** 我的预测是 `RC_PLATFORM` 最可能被推翻——
+`base.txt` 钉的是 `torch==2.9.0`，而平台抽象层是从 FlagScale 原样搬来、只在镜像自带的
+torch 2.7.1 上验证过的；若它依赖 2.7 的某个 API，2.9 上就会炸。实测 `TORCH=2.9.0+cu128`
+且 `PLATFORM` 正常，**平台层在钉死的 2.9.0 上同样成立**，不存在版本兼容缺口。
+这是必须在 W1 暴露、而不是留给 W2 的结论。
+
+耗时 ~18 分钟，长极是 `torch 2.9.0` ~900MB 加上一众 CUDA 轮子（共 ~6GB），
+经代理约 1 MB/s。W2 若需重跑，建议预热 pip 缓存。
+
+> 踩坑（已修）：产物最初放在仓库内的 `_scratch/`，而 `sync.sh` 是
+> `rsync -az --delete`，本机不存在该目录 → 远端 venv 与日志被当作多余文件删除，
+> pip 在已删 inode 上空转、进程还活着但毫无进展。现在脚本把产物写到
+> `/tmp/acc1.log` 与 `/tmp/acc1_venv`（同步树外），脚本本身留在仓库内受同步管理。
 
 ---
 
@@ -116,13 +163,30 @@ migration_scope.txt 的待迁移模块清单）。源码树零容忍，文档树
 ## 6. 单元测试
 
 ```
-$ python -m pytest tests/ -q
-161 passed
+$ python -m pytest tests/unit_tests/ -q
+176 passed in 8.09s
 RC=0
 ```
 
 构成：platforms 27 + check_no_megatron 43 + check_import_closure 22 +
-compare_precision 48 + CI 一致性 13（含 raw-tensor bit-exact 21，bf16 等 5 dtype 参数化）。
+compare_precision 48 + CI 一致性 13 + raw-tensor bit-exact 23（bf16 等 5 dtype 参数化）。
+
+`test_raw_tensor_bitexact.py` 连跑 3 次均 `23 passed`，确认无 flake —— 该文件早先版本
+确实 flake 过：它断言「float32 归约必然吞掉 1-ULP 单元素扰动」，而这是**输入相关**的。
+容器实测（300 seeds × 3 形状，`randn` 元素 0 加 1 ULP，`sum()` 结果**不同**的比例）：
+
+| shape | sum() 不同 | 即被吸收 |
+|-------|-----------|---------|
+| (4, 8) | 37/300 (12%) | 88% |
+| (32, 32) | 5/300 (2%) | 98% |
+| (256, 256) | 2/300 (1%) | 99% |
+
+两个方向现在都按**实测挑出的 seed** 钉死（`_ABSORBING_SEED=0` / `_SURVIVING_SEED=8`），
+并新增 `test_elementwise_catches_it_regardless_of_input` —— 逐元素路径对所有 seed 都能
+看见差异，**无输入相关性**，这才是工具真正依赖的性质。
+
+教训：汇总统计量不仅弱，而且**它漏掉什么是不确定的**；手工构造同样不可靠
+（`ones(4,8)` 与「1e8 主导元素」两个我以为必然吸收的构造，实测 `sum()` 都相同／不同与预期相反）。
 
 ---
 

@@ -41,8 +41,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install pre-commit
-        # Pin kept in lockstep with requirements/dev.txt; _scratch/validate_ci.py
-        # (and tests/unit_tests/tools/test_ci_workflow.py) assert they match.
+        # Pin kept in lockstep with requirements/dev.txt;
+        # tests/unit_tests/tools/test_ci_workflow.py asserts they match.
         run: pip install pre-commit==4.2.0
       - name: Run hooks
         run: pre-commit run --all-files --show-diff-on-failure
