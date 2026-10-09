@@ -1,0 +1,61 @@
+# FlagOS-Robo migration scope - planned module prefixes
+#
+# Input for: tools/check_import_closure.py --planned-from docs/migration_scope.txt
+# Source baseline: FlagScale @ f8e9a62c499d526a6ffa47f533bcf342330b7326
+#
+# One dotted module prefix per line. Matching is on dotted boundaries, so
+# `flagscale.train.utils` never matches `flagscale.train.utils_extra`.
+#
+# This file is the SINGLE SOURCE OF TRUTH for "what moves into FlagOS-Robo".
+# docs/MIGRATION_MAP.md holds the rename contract (what it becomes); this
+# holds the boundary (what is in scope at all). Keep them in sync.
+
+# --- W1: already migrated -------------------------------------------------
+flagscale.platforms
+flagscale.logger
+flagscale.models.utils
+flagscale.models.configs
+
+# --- W2-W3: model layer ---------------------------------------------------
+flagscale.models.pi0
+flagscale.models.pi05
+flagscale.models.vla
+
+# --- W2-W3: data + processor layer ---------------------------------------
+flagscale.train.datasets
+flagscale.train.processor
+flagscale.train.perf_monitor
+flagscale.transformations
+
+# --- W2-W3: training entry points ----------------------------------------
+flagscale.train.utils
+flagscale.train.train_pi
+flagscale.train.train_gr00t_n1_5
+flagscale.train.train_config
+
+# --- W2-W3: inference + serve (hidden scope found via seed discovery) ----
+flagscale.inference.inference_pi
+flagscale.serve.run_serve_vla
+flagscale.serve.processor
+flagscale.serve.websocket_policy_server
+flagscale.serve.msgpack_numpy
+# Found by the closure tool, NOT by reading code. flagscale/serve/__init__.py:15
+# does `from .utils import load_args, task_config`, so importing anything under
+# serve/ pulls these in. 199 LOC total (utils 54 + metric 145).
+flagscale.serve.utils
+flagscale.serve.metric
+
+# --- W2-W3: runner (native train path only, not all 63 files) ------------
+flagscale.runner.runner_train
+flagscale.runner.backend_native_train
+flagscale.runner.utils
+
+# --- package roots: EXACT entries (=) so only the __init__.py moves -------
+# A bare subtree entry here would swallow the whole monorepo and make the
+# OUTSIDE count 0 by construction. The tool now rejects that outright.
+=flagscale
+=flagscale.models
+=flagscale.train
+=flagscale.inference
+=flagscale.serve
+=flagscale.runner

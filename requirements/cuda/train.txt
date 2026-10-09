@@ -1,0 +1,26 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Training dependencies.
+#
+# W1 CONTRACT -- DO NOT ADD megatron_core HERE.
+# FlagScale's requirements/cuda/train.txt pins
+#   megatron_core @ https://resource.flagos.net/.../megatron_core-0.16.0rc0-...whl
+# FlagOS-Robo deliberately drops that line: the suite targets a pure-PyTorch
+# training stack. tools/check_no_megatron.py enforces this at CI time.
+
+-r ./base.txt
+sentencepiece==0.2.1
+transformers==4.57.6
+tiktoken==0.12.0

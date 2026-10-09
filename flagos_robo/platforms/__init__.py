@@ -1,0 +1,38 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Migrated from FlagScale flagscale/platforms/__init__.py @ baseline f8e9a62c.
+
+from .platform_base import PlatformBase
+from .platform_manager import (
+    LEGACY_PLATFORM_ENV_VAR,
+    PLATFORM_ENV_VAR,
+    get_platform,
+    reset_platform,
+    set_platform,
+)
+from .platform_register import PLATFORMS, register_platforms
+
+register_platforms()
+
+__all__ = [
+    "LEGACY_PLATFORM_ENV_VAR",
+    "PLATFORMS",
+    "PLATFORM_ENV_VAR",
+    "PlatformBase",
+    "get_platform",
+    "register_platforms",
+    "reset_platform",
+    "set_platform",
+]

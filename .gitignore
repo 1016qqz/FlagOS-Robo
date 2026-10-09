@@ -1,0 +1,36 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Experiment / runtime outputs
+outputs/
+logs/
+wandb/
+checkpoints/
+*.log
+
+# Local scratch: probes, one-off acceptance drivers, negative-control fixtures.
+# Reproducible commands live in docs/, so scratch drivers are deliberately
+# NOT part of the deliverable.
+_scratch/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store

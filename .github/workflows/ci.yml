@@ -1,0 +1,171 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# W1 DRAFT. The three jobs below are ordered by cost on purpose: the gates that
+# need no GPU and no heavy wheels run first and are cheap enough for every push,
+# while anything needing CUDA is split into a separate self-hosted job that a
+# fork's PR will skip rather than fail.
+#
+# Scope note for W2-W3: `purity` and `closure` are the two jobs that must never
+# be weakened. They are the automated form of the W1 contract -- no Megatron in
+# the dependency tree, and no import escaping the planned migration scope.
+
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------- lint
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pre-commit
+        # Pin kept in lockstep with requirements/dev.txt; _scratch/validate_ci.py
+        # (and tests/unit_tests/tools/test_ci_workflow.py) assert they match.
+        run: pip install pre-commit==4.2.0
+      - name: Run hooks
+        run: pre-commit run --all-files --show-diff-on-failure
+
+  # ------------------------------------------------------------- purity
+  # The hard W1 acceptance: no Megatron in source, declared deps, or env.
+  # Deliberately runs with NO project dependencies installed -- the checker is
+  # pure stdlib so it cannot be defeated by a missing import.
+  purity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Prove the checker can fail (negative control)
+        # Without this, a checker that always returns 0 would pass forever.
+        run: python tools/check_no_megatron.py --self-test
+
+      - name: No Megatron in source or declared deps
+        run: python tools/check_no_megatron.py
+
+      - name: No Megatron importable in the environment
+        run: python tools/check_no_megatron.py --check-env
+
+      - name: No stale flagscale module-path strings
+        # AST blind spot B3: yaml/README/CLI text references that grep .py misses.
+        run: |
+          if grep -rnE "[\"']flagscale\." flagos_robo/ ; then
+            echo "::error::stale flagscale.* module path string in flagos_robo/"
+            exit 1
+          fi
+          echo "OK: no stale module-path strings"
+
+  # ------------------------------------------------------------- closure
+  # Guards W2-W3 migration scope. Runs the self-test unconditionally; the real
+  # scan only runs when a FlagScale checkout is available, because the tool
+  # needs the source tree it is validating against.
+  closure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Prove the closure tool can fail (negative control)
+        run: python tools/check_import_closure.py --self-test
+
+      - name: Checkout FlagScale at the pinned baseline
+        uses: actions/checkout@v4
+        with:
+          repository: FlagOpen/FlagScale
+          # Keep in lockstep with docs/MIGRATION_MAP.md. A drifting baseline
+          # silently invalidates the migration scope, so it is pinned by SHA.
+          ref: f8e9a62c499d526a6ffa47f533bcf342330b7326
+          path: _ci/FlagScale
+
+      - name: Scan migration scope
+        # Must stay byte-identical to the command in docs/MIGRATION_SOP.md so
+        # that CI and the documented manual procedure cannot drift apart.
+        run: |
+          python tools/check_import_closure.py \
+            --source-root _ci/FlagScale --package flagscale \
+            --planned-from docs/migration_scope.txt \
+            --discover-seeds \
+            --examples-only pi0 --examples-only pi0_5 --examples-only gr00t_n1_5
+
+  # ---------------------------------------------------------------- tests
+  tests-cpu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dev deps only
+        # No torch here. The GPU-dependent tests skip themselves; see tests-gpu.
+        run: |
+          pip install -r requirements/dev.txt
+          pip install -e . --no-deps
+      - name: Unit tests (CPU subset)
+        run: pytest tests/unit_tests -q
+
+      - name: Precision tool negative control
+        run: python tools/compare_precision.py --self-test
+
+  # ------------------------------------------------------------ tests-gpu
+  # Needs a CUDA runner. Skipped on forks (no access to self-hosted labels)
+  # rather than failed, so external contributions stay mergeable.
+  tests-gpu:
+    if: github.event_name == 'workflow_dispatch' || github.repository_owner == 'FlagOpen'
+    runs-on: [self-hosted, linux, cuda]
+    container:
+      image: harbor.baai.ac.cn/flagscale/flagscale:cuda12.8-cudnn9.7-python3.12-torch2.7.1-time2507101104
+      options: --gpus all --ipc=host --shm-size=16g
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install into the image's conda env
+        run: |
+          source /root/miniconda3/etc/profile.d/conda.sh
+          conda activate flagscale-train
+          pip install -e . --no-deps
+          pip install -r requirements/dev.txt
+      - name: Full unit tests on real GPUs
+        run: |
+          source /root/miniconda3/etc/profile.d/conda.sh
+          conda activate flagscale-train
+          pytest tests/unit_tests -q
+      - name: Platform layer resolves on real hardware
+        run: |
+          source /root/miniconda3/etc/profile.d/conda.sh
+          conda activate flagscale-train
+          python -c "
+          from flagos_robo.platforms import get_platform
+          p = get_platform()
+          assert p.name() == 'cuda', p.name()
+          assert p.dist_backend() == 'nccl', p.dist_backend()
+          print(p.name(), p.dist_backend(), p.amp_device_type(), p.current_device())
+          "
+      - name: Purity holds in the GPU image too
+        run: |
+          source /root/miniconda3/etc/profile.d/conda.sh
+          conda activate flagscale-train
+          python tools/check_no_megatron.py --check-env
