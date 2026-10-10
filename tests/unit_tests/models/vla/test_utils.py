@@ -14,7 +14,7 @@
 
 import unittest
 
-from flagscale.models.vla.utils import get_vlm_config
+from flagos_robo.models.vla.utils import get_vlm_config
 
 
 class MockConfigDirect:

@@ -14,7 +14,7 @@
 
 import unittest
 
-from flagscale.models.vla.registry import (
+from flagos_robo.models.vla.registry import (
     ACTION_MODEL_REGISTRY,
     VLM_REGISTRY,
     build_action_model,
