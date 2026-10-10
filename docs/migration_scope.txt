@@ -19,7 +19,21 @@ flagscale.models.configs
 # --- W2-W3: model layer ---------------------------------------------------
 flagscale.models.pi0
 flagscale.models.pi05
-flagscale.models.vla
+
+# `flagscale.models.vla` is NOT written as a bare subtree on purpose. A bare
+# entry would also cover `vla.qwen_gr00t` and `vla.vlm`, which the design
+# explicitly leaves behind (they pull Megatron in through
+# qwen_gr00t/task_encoder_qwen_gr00t.py). Listing the kept subpackages one by
+# one is what makes the two dropped ones show up as OUTSIDE if anything still
+# reaches them. 21 py files / 4958 LOC.
+=flagscale.models.vla
+flagscale.models.vla.action_model
+flagscale.models.vla.base_policy
+flagscale.models.vla.gr00t_n1_5
+flagscale.models.vla.pretrained_config
+flagscale.models.vla.protocols
+flagscale.models.vla.registry
+flagscale.models.vla.utils
 
 # --- W2-W3: data + processor layer ---------------------------------------
 flagscale.train.datasets
@@ -46,9 +60,27 @@ flagscale.serve.utils
 flagscale.serve.metric
 
 # --- W2-W3: runner (native train path only, not all 63 files) ------------
+# 11 modules / 4426 LOC. The list below is what a two-seed scan
+# (runner_train + backend.backend_native_train) actually reaches - the earlier
+# three-line version was wrong twice over: `flagscale.runner.backend_native_train`
+# is a module that does not exist (the real path has `.backend.` in it), and
+# elastic/ + heartbeat/ were missing entirely.
 flagscale.runner.runner_train
-flagscale.runner.backend_native_train
+flagscale.runner.runner_base_legacy
 flagscale.runner.utils
+=flagscale.runner.backend
+flagscale.runner.backend.backend_base
+flagscale.runner.backend.backend_native_train
+=flagscale.runner.elastic
+flagscale.runner.elastic.diagnostic
+flagscale.runner.elastic.log_collector
+flagscale.runner.elastic.monitor_service
+=flagscale.runner.heartbeat
+flagscale.runner.heartbeat.config
+# Reached only through string module paths in heartbeat/config.py:136 and :163,
+# so the static scan reports them as dynamic references, not plain imports.
+flagscale.runner.heartbeat.gpu_health
+flagscale.runner.heartbeat.monitor
 
 # --- package roots: EXACT entries (=) so only the __init__.py moves -------
 # A bare subtree entry here would swallow the whole monorepo and make the

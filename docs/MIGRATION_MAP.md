@@ -1,6 +1,6 @@
 # FlagOS-Robo 迁移映射表（MIGRATION_MAP）
 
-> 本文件是 FlagOS-Robo 从 FlagScale 独立建仓的**迁移契约**。W1 定稿，W2 起不得擅自变更；
+> 本文件记录 FlagOS-Robo 从 FlagScale 独立建仓时「哪个模块搬到哪里」的**对照表**。W1 定稿，W2 起不得擅自变更；
 > 如需变更，必须在本文件记录变更原因与日期。
 
 ## 一、基线钉死（W1 D1.5 / 风险 R1）
@@ -22,7 +22,7 @@
 git rev-parse HEAD   # 必须等于 f8e9a62c499d526a6ffa47f533bcf342330b7326
 ```
 
-## 二、包命名映射契约
+## 二、包名对照表
 
 | FlagScale | FlagOS-Robo | 迁移批次 | 备注 |
 |---|---|---|---|
@@ -32,7 +32,7 @@ git rev-parse HEAD   # 必须等于 f8e9a62c499d526a6ffa47f533bcf342330b7326
 | `flagscale.models.configs` | `flagos_robo.models.configs` | **W1** | `types` 被引 25 次 |
 | `flagscale.models.pi0` | `flagos_robo.models.pi0` | W2–W3 | 4 文件 / 1674 LOC |
 | `flagscale.models.pi05` | `flagos_robo.models.pi05` | W2–W3 | 6 文件 / 2053 LOC |
-| `flagscale.models.vla` | `flagos_robo.models.vla` | W2–W3 | 27 文件中迁 21；`qwen_gr00t/`(4) + `vlm/`(2) 留在 FlagScale |
+| `flagscale.models.vla` | `flagos_robo.models.vla` | W2–W3 | 27 文件中迁 21 / 4958 LOC；`qwen_gr00t/`(4) + `vlm/`(2) 留在 FlagScale。`migration_scope.txt` 里**逐个列出要迁的子包**而不写裸子树，否则这两个也被算成计划内；扫描时配 `--cut` 两条声明（见 MIGRATION_SOP.md §G1） |
 | `flagscale.train.datasets` | `flagos_robo.data` | W2–W3 | **改名**，对齐架构图「数据层」；12 文件 / 6482 LOC |
 | `flagscale.train.processor` | `flagos_robo.processor` | W2–W3 | **提级**，processor 非训练专属；15 文件 / 4524 LOC |
 | `flagscale.train.utils` | `flagos_robo.train.utils` | W2–W3 | 8 文件 / 1640 LOC |
@@ -43,8 +43,13 @@ git rev-parse HEAD   # 必须等于 f8e9a62c499d526a6ffa47f533bcf342330b7326
 | `flagscale.inference.inference_pi` | `flagos_robo.inference.inference_pi` | W2–W3 | 211 LOC，隐藏范围（见 §四 B2） |
 | `flagscale.serve.run_serve_vla` | `flagos_robo.serve.run_serve_vla` | W2–W3 | 293 LOC，隐藏范围 |
 | `flagscale.serve.processor.*` | `flagos_robo.serve.processor.*` | W2–W3 | 18+102+69 LOC |
-| `flagscale.runner.runner_train` | `flagos_robo.runner.runner_train` | W2–W3 | 仅 native train 链路，非全部 63 文件 |
-| `flagscale.runner.backend_native_train` | `flagos_robo.runner.backend_native_train` | W2–W3 | — |
+| `flagscale.runner.runner_train` | `flagos_robo.runner.runner_train` | W2–W3 | 958 LOC。仅 native train 链路，非全部 63 文件 |
+| `flagscale.runner.runner_base_legacy` | `flagos_robo.runner.runner_base_legacy` | W2–W3 | 37 LOC |
+| `flagscale.runner.backend.backend_base` | `flagos_robo.runner.backend.backend_base` | W2–W3 | 36 LOC |
+| `flagscale.runner.backend.backend_native_train` | `flagos_robo.runner.backend.backend_native_train` | W2–W3 | 168 LOC。路径含 `.backend.` —— 早先写成 `flagscale.runner.backend_native_train` 是个不存在的模块 |
+| `flagscale.runner.elastic.{diagnostic,log_collector,monitor_service}` | 同名，`flagos_robo.runner.elastic.*` | W2–W3 | 190+158+488 LOC |
+| `flagscale.runner.heartbeat.config` | `flagos_robo.runner.heartbeat.config` | W2–W3 | 390 LOC |
+| `flagscale.runner.heartbeat.{gpu_health,monitor}` | 同名，`flagos_robo.runner.heartbeat.*` | W2–W3 | 296+495 LOC。只被 `config.py:136/163` 的字符串模块路径引用，改写时这两个字符串也要跟着改 |
 | `flagscale.runner.utils.logger` | `flagos_robo.logger` | W2–W3 | **合并**，`transformations` 内 2 处引用 |
 
 ### 特殊改写
@@ -62,7 +67,7 @@ git rev-parse HEAD   # 必须等于 f8e9a62c499d526a6ffa47f533bcf342330b7326
 而 `train_pi.py:113` 调用 `get_platform().current_device()`（用于 `FSDP(device_id=...)`）
 —— 说明该入口实际绑定的是 `megatron.plugin.platform` 那一套，两套平台层已 API 漂移。
 
-W1 在 `flagos_robo/platforms/` 中**一次性收口**：`PlatformBase` 新增抽象方法
+W1 在 `flagos_robo/platforms/` 中**一次性补齐**：`PlatformBase` 新增抽象方法
 `current_device()`，CUDA / NPU / MUSA / TXDA 四个后端全部实现。
 否则 W2 迁入训练入口后会直接 `AttributeError`。
 

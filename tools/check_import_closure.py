@@ -462,6 +462,8 @@ class ScanReport:
     dynamic: list[Reference]
     text: list[Reference]
     origins: set[str] = field(default_factory=set)
+    cut: list[str] = field(default_factory=list)
+    cut_reached: list[str] = field(default_factory=list)
 
     def _from_migrated_file(self, ref: Reference) -> bool:
         """Does this reference ORIGINATE inside the migration set?
@@ -517,6 +519,8 @@ class ScanReport:
             "reached_count": len(self.reached),
             "outside": self.outside,
             "unresolved": self.unresolved,
+            "cut": self.cut,
+            "cut_reached": self.cut_reached,
             "dynamic_outside": [r.as_dict() for r in self.dynamic_outside],
             "dynamic_opaque": [r.as_dict() for r in self.dynamic_opaque],
             "text_outside": [r.as_dict() for r in self.text_outside],
@@ -532,9 +536,13 @@ def scan(
     seeds: list[str],
     examples: str = "examples",
     text_subdirs: list[str] | None = None,
+    cut: list[str] | None = None,
 ) -> ScanReport:
     closure = static_closure(seeds, source_root, package)
-    outside = sorted(m for m in closure.reached if not in_planned(m, planned))
+    cut = list(cut or [])
+    not_planned = [m for m in closure.reached if not in_planned(m, planned)]
+    cut_reached = sorted(m for m in not_planned if in_planned(m, cut))
+    outside = sorted(m for m in not_planned if not in_planned(m, cut))
     return ScanReport(
         seeds=sorted(seeds),
         planned=list(planned),
@@ -544,7 +552,56 @@ def scan(
         dynamic=scan_dynamic(source_root, package),
         text=scan_text(source_root, package, text_subdirs or [examples]),
         origins=set(closure.files),
+        cut=cut,
+        cut_reached=cut_reached,
     )
+
+
+def stale_cut_entries(cut: list[str], cut_reached: list[str]) -> list[str]:
+    """``--cut`` prefixes that this scan never actually reached.
+
+    A cut entry is a claim: "the source tree really does import this, and the
+    rewrite step deletes that import". If the scan does not reach the prefix,
+    the claim is already stale - the import was removed, renamed, or never
+    existed - and keeping the entry would silently absorb a future leak under
+    the same name. So a stale entry is an error, not a warning: it is the same
+    failure as the vacuous planned set, one level down. Without this check
+    ``--cut`` degrades into a suppression list that drives OUTSIDE to 0 by
+    construction, which is exactly what the planned-set vacuity guard exists
+    to prevent.
+    """
+    return [p for p in cut if not any(in_planned(m, [p]) for m in cut_reached)]
+
+
+def dead_planned_entries(
+    planned: list[str], source_root: Path, package: str
+) -> list[str]:
+    """Planned entries that name a module which does not exist in the source tree.
+
+    The closure scan only ever asks "is every module I REACHED inside the
+    planned set?". It is structurally blind in the other direction: a planned
+    entry naming a module that does not exist is never reached, so it is never
+    compared against anything, and the scan still reports PASS. That blind spot
+    is not hypothetical - ``flagscale.runner.backend_native_train`` sat in the
+    scope file through all of W1 while the real module is
+    ``flagscale.runner.backend.backend_native_train``. Three green gates never
+    saw it, because nothing in the closure direction can see it.
+
+    So check the planned set against the filesystem directly. Entries outside
+    ``package`` are skipped (they are deliberate renames/merges, not modules of
+    the source tree).
+    """
+    dead = []
+    for entry in planned:
+        module = entry.lstrip("=")
+        if module != package and not module.startswith(package + "."):
+            continue
+        rel = module.split(".")
+        path = source_root.joinpath(*rel)
+        if path.is_dir() or path.with_suffix(".py").is_file():
+            continue
+        dead.append(entry)
+    return dead
 
 
 def render(report: ScanReport, verbose: bool = False) -> None:
@@ -564,6 +621,18 @@ def render(report: ScanReport, verbose: bool = False) -> None:
             print(f"     - {m}")
     else:
         print("  -> OUTSIDE planned set: 0")
+
+    if report.cut:
+        print(
+            f"  xx declared CUT (reached in source, import deleted on rewrite): "
+            f"{len(report.cut_reached)} module(s) via {len(report.cut)} prefix(es)"
+        )
+        for m in report.cut_reached:
+            print(f"     x {m}")
+        print(
+            "     NOTE: a cut is only PROVEN by re-running this tool against the "
+            "migrated tree, where these modules do not exist at all."
+        )
 
     if report.unresolved:
         print(f"  .. unresolved (not on disk, likely attribute import): {len(report.unresolved)}")
@@ -648,13 +717,19 @@ def _write_fixture(root: Path, extra: dict[str, str] | None = None) -> None:
         path.write_text(content, encoding="utf-8")
 
 
-def _scan_fixture(root: Path, planned: list[str], seeds: list[str] | None = None) -> ScanReport:
+def _scan_fixture(
+    root: Path,
+    planned: list[str],
+    seeds: list[str] | None = None,
+    cut: list[str] | None = None,
+) -> ScanReport:
     return scan(
         root,
         "demo",
         planned,
         seeds if seeds is not None else FIXTURE_SEEDS,
         examples="examples",
+        cut=cut,
     )
 
 
@@ -782,6 +857,50 @@ def run_self_test(verbose: bool = False) -> int:
             )
         )
 
+        # --- --cut: deliberate non-migration, and its anti-rot guards -------
+        # Reuse the C1 fixture: demo.left_behind.strays IS reached and is NOT
+        # planned, i.e. exactly the shape of a module we decide to drop.
+        rep_cut = _scan_fixture(c1, FIXTURE_PLANNED, cut=["demo.left_behind"])
+        checks.append(
+            (
+                "cut: a declared non-migrated module leaves OUTSIDE and lands in CUT",
+                rep_cut.ok
+                and not rep_cut.outside
+                and "demo.left_behind.strays" in rep_cut.cut_reached,
+                f"outside={rep_cut.outside} cut_reached={rep_cut.cut_reached}",
+            )
+        )
+        checks.append(
+            (
+                "cut: dropping the cut entry flips the same scan back to FAIL",
+                not rep1.ok and "demo.left_behind.strays" in rep1.outside,
+                f"without cut: ok={rep1.ok} outside={rep1.outside}",
+            )
+        )
+        checks.append(
+            (
+                "cut: a prefix this scan never reached is reported STALE",
+                stale_cut_entries(["demo.never_imported"], rep_cut.cut_reached)
+                == ["demo.never_imported"],
+                f"stale={stale_cut_entries(['demo.never_imported'], rep_cut.cut_reached)}",
+            )
+        )
+        checks.append(
+            (
+                "cut: cannot shadow a PLANNED module (would be stale, never silent)",
+                stale_cut_entries(["demo.keep.helper"], rep_cut.cut_reached)
+                == ["demo.keep.helper"],
+                "a planned module is never in cut_reached, so cutting it errors out",
+            )
+        )
+        checks.append(
+            (
+                "cut: does not touch the C2 channel",
+                bool(_scan_fixture(c2, FIXTURE_PLANNED, cut=["demo.left_behind"]).dynamic_outside),
+                "a dynamic string ref into a cut subtree must still be reported",
+            )
+        )
+
         # --- prefix boundary ------------------------------------------------
         checks.append(
             (
@@ -789,6 +908,42 @@ def run_self_test(verbose: bool = False) -> int:
                 in_planned("demo.keep.leaf", ["demo.keep"])
                 and not in_planned("demo.keeper", ["demo.keep"]),
                 "in_planned('demo.keeper', ['demo.keep']) must be False",
+            )
+        )
+
+        # --- dead planned entry (the W1 blind spot) -------------------------
+        # A planned entry naming a nonexistent module is never reached, so it
+        # is never compared, so every closure gate reports PASS. That is how
+        # `flagscale.runner.backend_native_train` (real path has an extra
+        # `.backend.`) survived all of W1. Check both directions here: the
+        # typo must be caught, and a live entry must not be flagged.
+        dead_typo = dead_planned_entries(
+            FIXTURE_PLANNED + ["demo.keep.no_such_module"], c1, "demo"
+        )
+        checks.append(
+            (
+                "planned entry naming a nonexistent module is reported DEAD",
+                dead_typo == ["demo.keep.no_such_module"],
+                f"dead={dead_typo}",
+            )
+        )
+        checks.append(
+            (
+                "dead-entry check does not flag entries that do exist",
+                dead_planned_entries(FIXTURE_PLANNED, c1, "demo") == [],
+                f"dead={dead_planned_entries(FIXTURE_PLANNED, c1, 'demo')}",
+            )
+        )
+        checks.append(
+            (
+                "dead entry is invisible to the closure channel (why it is needed)",
+                not any(
+                    "no_such_module" in m
+                    for m in _scan_fixture(
+                        c1, FIXTURE_PLANNED + ["demo.keep.no_such_module"]
+                    ).reached
+                ),
+                "unreached entry never enters reached/outside, so C1 cannot see it",
             )
         )
     finally:
@@ -839,6 +994,16 @@ def main(argv: list[str] | None = None) -> int:
         help="planned module prefix (repeatable); merged with --planned-from",
     )
     ap.add_argument("--seed", action="append", default=[], help="seed module (repeatable)")
+    ap.add_argument(
+        "--cut",
+        action="append",
+        default=[],
+        help=(
+            "module prefix deliberately NOT migrated (repeatable). Reported "
+            "separately from OUTSIDE instead of failing the scan. Every prefix "
+            "must actually be reached by this scan or the tool exits 2."
+        ),
+    )
     ap.add_argument(
         "--discover-seeds",
         action="store_true",
@@ -899,6 +1064,22 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  - {msg}", file=sys.stderr)
         return 2
 
+    dead = dead_planned_entries(planned, source_root, args.package)
+    if dead:
+        print(
+            "error: planned entry(ies) name a module that does not exist in "
+            f"{source_root} (typo or stale path):",
+            file=sys.stderr,
+        )
+        for entry in dead:
+            print(f"  - {entry}", file=sys.stderr)
+        print(
+            "  The closure direction cannot catch this: an entry that is never "
+            "reached is never compared, so the scan would still report PASS.",
+            file=sys.stderr,
+        )
+        return 2
+
     seeds = list(args.seed)
     if args.discover_seeds:
         discovered = discover_seeds(
@@ -935,7 +1116,22 @@ def main(argv: list[str] | None = None) -> int:
         sorted(set(seeds)),
         examples=args.examples,
         text_subdirs=text_subdirs or None,
+        cut=args.cut,
     )
+    stale = stale_cut_entries(report.cut, report.cut_reached)
+    if stale:
+        print(
+            "error: --cut prefixes that this scan never reached (stale claims):",
+            file=sys.stderr,
+        )
+        for p in stale:
+            print(f"  - {p}", file=sys.stderr)
+        print(
+            "  A cut entry asserts the source tree imports it. If nothing "
+            "reaches it, drop the entry - keeping it would absorb a future leak.",
+            file=sys.stderr,
+        )
+        return 2
     if args.json:
         print(json.dumps(report.as_dict(), indent=2, ensure_ascii=False))
     else:

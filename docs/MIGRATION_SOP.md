@@ -2,7 +2,7 @@
 
 > 适用范围：W2-W3 把 FlagScale 的机器人训练/推理/服务代码搬进 FlagOS-Robo。
 > 基线：FlagScale @ `f8e9a62c499d526a6ffa47f533bcf342330b7326`（见 `MIGRATION_MAP.md`）
-> 本文档描述**流程**；范围边界在 `migration_scope.txt`，命名契约在 `MIGRATION_MAP.md`。
+> 本文档描述**流程**；范围边界在 `migration_scope.txt`，包名对照在 `MIGRATION_MAP.md`。
 
 ## 0. 为什么需要 SOP：三类实测盲区
 
@@ -26,7 +26,7 @@ B3 曾让我自己栽过一次：只用 3 个 `train_*.py` 做起点，漏掉了
 - **C2 动态引用** — 扫 `importlib.import_module` / `__import__` 及字符串字面量模块路径（对应 B2）
 - **C3 文本引用** — 扫 `yaml|yml|md|sh|toml` 里的模块/脚本路径（对应 B3）
 
-### 标准命令
+### 标准命令 G1（训练入口侧）
 
 ```bash
 cd FlagOS-Robo
@@ -34,10 +34,11 @@ python3 tools/check_import_closure.py \
   --source-root ../FlagScale --package flagscale \
   --planned-from docs/migration_scope.txt \
   --discover-seeds \
-  --examples-only pi0 --examples-only pi0_5 --examples-only gr00t_n1_5
+  --examples-only pi0 --examples-only pi0_5 --examples-only gr00t_n1_5 \
+  --cut flagscale.models.vla.qwen_gr00t --cut flagscale.models.vla.vlm
 ```
 
-W1 结束时的实测基线（必须可复现）：
+W2 开工时的实测基线（必须可复现）：
 
 ```
 seeds   : 4
@@ -46,20 +47,37 @@ seeds   : 4
     + flagscale.train.train_gr00t_n1_5
     + flagscale.train.train_pi
 C1 static closure : reached 80 module(s)   OUTSIDE planned set: 0
+                                           declared CUT: 5 module(s) via 2 prefix(es)
 C2 dynamic refs   : 171 total              outside: 0   opaque: 1
 C3 text refs      : 8 total                outside: 0
 PASS: migration scope is closed            RC=0
 ```
 
+### 标准命令 G1'（启动器侧，必须手写两个 seed）
+
+```bash
+python3 tools/check_import_closure.py \
+  --source-root ../FlagScale --package flagscale \
+  --planned-from docs/migration_scope.txt \
+  --seed flagscale.runner.runner_train \
+  --seed flagscale.runner.backend.backend_native_train \
+  --examples-only pi0 --examples-only pi0_5 --examples-only gr00t_n1_5
+```
+
+`--discover-seeds` 只读 `examples/*/conf/*.yaml` 的 `entrypoint:` 字段，而 runner 是**被 CLI
+调用的**、不出现在任何 entrypoint 里，自动发现永远找不到它。所以启动器那条 import 链只能手写
+seed，而且必须给两个：单给 `runner_train` 会漏掉 `backend.backend_native_train` 底下的
+`elastic/` 与 `heartbeat/`。实测基线 `reached 12 / OUTSIDE 0`（11 个模块 4426 LOC + 包根）。
+
 退出码：`0` 闭合 / `1` 有泄漏 / `2` 用法或范围定义本身有问题。
 
-### 两条必须理解的语义
+### 三条必须理解的语义
 
 **`--examples-only` 同时收窄 seed 发现与 C3 文本扫描。** FlagScale 全仓有 28 个 `entrypoint:`
 （含 LLM / compress / megatron GPT），不限定的话闭包会吞下整个 monorepo。两个通道必须对齐，
 否则 C1 扫 3 个套件而 C3 扫全树，会报 65 条无关项。
 
-**范围文件有两种条目形式，区别是承重的：**
+**范围文件有两种条目形式，区别很要紧：**
 
 | 写法 | 含义 |
 |---|---|
@@ -68,6 +86,34 @@ PASS: migration scope is closed            RC=0
 
 包根（`flagscale`、`flagscale.train` …）**必须写 `=` 形式**：它们的 `__init__.py` 在 import
 链上所以必须迁，但不能顺带把兄弟子包（`train.megatron`、`compress`）全拖进来。
+
+**`--cut` 用来声明「够得到但故意不迁」，它和范围文件解决的不是同一个问题。**
+
+这一条是 W2 开工第一天实测撞出来的。按设计 `models/vla/` 下的 `qwen_gr00t/` 与 `vlm/` 不迁，
+于是范围文件里只列要迁的 7 个子包。结果扫描报 `OUTSIDE: 5` —— 因为
+`flagscale/models/vla/__init__.py:28-32` 那段 `try: from .qwen_gr00t ... from .vlm ...`
+在**源树里是真实存在的**，闭包必然走到它们。改范围文件只改变「算不算计划内」，改不了「够不够得到」。
+
+**推论：对源树跑的扫描，不可能靠调范围文件让一个有意切断的模块降到 0 违例。** 违例本来就有两类，
+必须分开记账：
+
+| 类别 | 含义 | 处置 |
+|---|---|---|
+| 真漏 | 没想到会用到 | 纳入范围或改写掉 |
+| 有意切断 | 设计上决定不迁，源树里那条 import 会在改写时删掉 | `--cut <前缀>` 声明 |
+
+`--cut` 的输出是**独立一行 `declared CUT`**，不混进 OUTSIDE，所以「切了几个」永远看得见。
+为了不让它退化成单纯的屏蔽名单（那就是换个马甲重犯「0 由构造保证」的错），工具上了两道约束：
+
+1. **每个 `--cut` 前缀必须在本次扫描里真的被够到**，否则说明条目已过期 → exit 2 拒跑。
+   和 vacuity guard 同一个思路：声明必须对应现实。
+   ```
+   error: --cut prefix(es) never reached by the closure (stale declaration):
+     - flagscale.models.vla.nonexistent
+   ```
+2. **切断只有在迁移后的树里才算证实。** 代码落地后对 `--source-root . --package flagos_robo`
+   跑同一个工具：`qwen_gr00t` 在那棵树里根本不存在，任何残留 import 都会以 unresolved 报出来。
+   这是切断的终局证据，写进 D5 验收。
 
 ## 2. 反同义反复：为什么 "OUTSIDE: 0" 本身不算结论
 
@@ -83,7 +129,7 @@ error: planned set would make this scan vacuous:
     'planned' and OUTSIDE is 0 by construction. Use '=flagscale' instead.
 ```
 
-**通用教训**：任何输出"违例 = 0"的检查工具，必须同时过两种自证，缺一不可。
+**通用教训**：任何输出"违例 = 0"的检查工具，必须同时过三种自证，缺一不可。
 
 1. **负对照** — 剔除一个已知必需项，0 必须变正。
    ```bash
@@ -91,9 +137,37 @@ error: planned set would make this scan vacuous:
    # 用 /tmp/scope_minus.txt 重跑 → 预期 OUTSIDE: 2，RC=1
    ```
 2. **反同义反复** — 范围集合本身不能宽到让 0 由构造成立（即上面的 vacuity guard）。
+3. **反向对账** — 范围文件里的条目也要拿去和现实核对，见下一节。
 
 W1 只做了第 1 条，在合成 fixture 上 13/13 全过，仍然在真实数据上栽在第 2 条上。
 **合成自检通过 ≠ 在真实数据上有判别力。**
+
+### 2.1 单向检查的结构性盲区
+
+闭包扫描只问一个方向的问题：**我够到的每个模块，是否都在计划集内？** 反方向它根本不问。
+于是一个「命名了不存在模块」的计划条目**永远不会被够到**，也就永远不会被拿去比较，
+扫描照样报 PASS。
+
+这不是假设。`flagscale.runner.backend_native_train` 这条路径在范围文件里躺了整个 W1 ——
+真路径中间还有一层 `.backend.`。三道绿灯全程没看见它，因为 G1 的 reached 集里 runner
+模块数就是 0（runner 不在任何 entrypoint 上），这条死路径对 G1 完全不可见。
+
+现在工具加了反方向检查：拿计划集逐条去文件系统核对，不存在就 exit 2。
+
+```
+error: planned entry(ies) name a module that does not exist in ../FlagScale (typo or stale path):
+  - flagscale.runner.backend_native_train
+  The closure direction cannot catch this: an entry that is never reached is
+  never compared, so the scan would still report PASS.
+```
+
+工具里现在有三道这样的拒跑检查，它们是同一条教训的三个实例 —— **声明必须拿去和现实对账**：
+
+| 检查 | 防的是 |
+|---|---|
+| vacuity guard | 范围集合宽到让 0 由构造成立 |
+| stale `--cut` guard | 切断声明已过期，却继续吸收同名的新泄漏 |
+| dead-entry guard | 范围条目拼错或过时，单向检查看不见 |
 
 ## 3. 每批迁移的七步流程
 
@@ -159,7 +233,7 @@ pipeline 验证，光靠静态检查无法确认这条路径没断。
 
 ## 5. 范围变更的纪律
 
-`docs/migration_scope.txt` 是迁移边界的**唯一真源**，`MIGRATION_MAP.md` 是命名契约的唯一真源。
+`docs/migration_scope.txt` 是迁移边界的**唯一真源**，`MIGRATION_MAP.md` 是包名对照的唯一真源。
 两者必须同步修改。改范围时：
 
 1. 先改 `migration_scope.txt`；
