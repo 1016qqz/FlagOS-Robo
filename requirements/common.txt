@@ -28,6 +28,16 @@ pydantic==2.12.5
 
 # Data science essentials
 numpy==1.26.4
+# pyarrow must be pinned, not left to `datasets` to resolve. datasets==4.5.0 only
+# asks for pyarrow>=21.0.0, so a fresh install picks up pyarrow 26.x, which hard-
+# requires NumPy >= 2.0 and aborts at import with
+#   ImportError: pyarrow requires NumPy 2.0 or newer, found 1.26.4
+# That breaks the whole train entry chain (train_pi -> datasets/lerobot_dataset ->
+# datasets -> pyarrow). The NumPy floor is a compiled-in runtime check, not package
+# metadata, so pip cannot see the conflict and resolves it happily. 21.0.0 is the
+# last release that still works with NumPy 1.x -- verified by installing it in the
+# H800 container and importing pyarrow + datasets successfully under numpy 1.26.4.
+pyarrow==21.0.0
 scipy==1.14.1
 pandas==2.2.3
 matplotlib==3.9.4
