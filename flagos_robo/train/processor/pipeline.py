@@ -369,7 +369,14 @@ class DataProcessorPipeline(HubMixin, Generic[TInput, TOutput]):
 
         # Iterate through each step to build its configuration entry.
         for step_index, processor_step in enumerate(self.steps):
-            registry_name = getattr(processor_step.__class__, "_registry_name", None)
+            # Read `_registry_name` off the class's own __dict__, not via getattr:
+            # `register` sets the attribute on the class it decorates, so a
+            # subclass of a registered step *inherits* the parent's name. Via
+            # getattr an unregistered subclass would save its parent's registry
+            # name and silently reload as the parent class. Restricting the
+            # lookup to the declaring class sends such a subclass down the
+            # class-path branch below, where it round-trips as itself.
+            registry_name = processor_step.__class__.__dict__.get("_registry_name")
 
             step_entry: dict[str, Any] = {}
             # Prefer registry name for portability, otherwise fall back to full class path.

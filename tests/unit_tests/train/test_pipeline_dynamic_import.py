@@ -49,6 +49,15 @@ from flagos_robo.train.processor.pipeline import (
 # name, hence the only one whose round-trip goes through dynamic import.
 UNREGISTERED_STEP = IdentityProcessorStep
 
+# A subclass of a *registered* step, itself never registered -- defined with a
+# real class statement at module level so that ``__module__`` points at this
+# test module, the way a user-defined subclass behaves. (Building it with
+# ``type()`` inside a method sets ``__module__`` to ``abc``, courtesy of
+# ABCMeta's calling frame, which made the saved path unresolvable for reasons
+# unrelated to what is under test.)
+class UnregisteredSubclass(ProcessorStepRegistry.get("device_processor")):  # type: ignore[misc]
+    pass
+
 
 def _save(tmp_path, steps, name="p"):
     DataProcessorPipeline(steps=steps, name=name).save_pretrained(tmp_path)
@@ -148,12 +157,52 @@ class TestLegacyConfigsFailLoudly:
             DataProcessorPipeline.from_pretrained(tmp_path, config_filename="legacy.json")
 
 
+class TestSubclassOfARegisteredStepRoundTripsAsItself:
+    """``register`` sets ``_registry_name`` on the class it decorates, so a
+    subclass *inherits* it. Reading that attribute with ``getattr`` made the
+    save side treat an unregistered subclass as registered: it wrote the
+    parent's registry name, and reload silently produced the parent class.
+
+    Observed before the fix, on a throwaway subclass of ``device_processor``::
+
+        SAVED ENTRY: {'registry_name': 'device_processor', ...}
+        SAVED type : SneakySubclass
+        RELOAD type: DeviceProcessorStep
+
+    No exception, no warning -- a pipeline that quietly drops a subclass's
+    behaviour. The same inheritance blind spot is why the audit below reads
+    ``__dict__`` rather than using ``getattr``.
+    """
+
+    def test_the_subclass_inherits_the_parents_registry_name(self):
+        """The precondition for the bug. If this ever fails the mechanism
+        changed and the two tests below are no longer meaningful."""
+        assert getattr(UnregisteredSubclass, "_registry_name", None) == "device_processor"
+        assert "_registry_name" not in UnregisteredSubclass.__dict__
+
+    def test_it_is_saved_by_class_path_not_the_inherited_name(self, tmp_path):
+        entry = _save(tmp_path, [UnregisteredSubclass()], name="sub")["steps"][0]
+        assert "registry_name" not in entry, (
+            f"saved the inherited registry name {entry.get('registry_name')!r}; "
+            "reload will substitute the parent class"
+        )
+        assert entry["class"].endswith(".UnregisteredSubclass")
+
+    def test_reload_does_not_silently_substitute_the_parent_class(self, tmp_path):
+        _save(tmp_path, [UnregisteredSubclass()], name="sub")
+        back = DataProcessorPipeline.from_pretrained(tmp_path, config_filename="sub.json")
+        assert type(back.steps[0]) is UnregisteredSubclass, (
+            f"reloaded as {type(back.steps[0]).__name__}, not the subclass that "
+            "was saved -- the parent class was substituted silently"
+        )
+
+
 class TestRegisteredStepsBypassTheDynamicImport:
     def test_registered_steps_carry_their_registry_name(self):
         """This is why only one step is exposed to the rename: every other
         in-repo step is registered, and registry names are rename-proof."""
         name = next(iter(ProcessorStepRegistry.list()))
-        assert getattr(ProcessorStepRegistry.get(name), "_registry_name", None) == name
+        assert ProcessorStepRegistry.get(name).__dict__.get("_registry_name") == name
 
     def test_every_in_repo_step_except_the_known_one_is_registered(self):
         """Guards against a future unregistered step quietly acquiring a
@@ -167,7 +216,10 @@ class TestRegisteredStepsBypassTheDynamicImport:
             if issubclass(obj, pipeline_mod.ProcessorStep)
             and obj is not pipeline_mod.ProcessorStep
             and not inspect.isabstract(obj)
-            and getattr(obj, "_registry_name", None) is None
+            # __dict__, not getattr: see TestSubclassOfARegisteredStep... above.
+            # getattr would report a subclass of a registered step as
+            # registered, hiding the very class this audit exists to surface.
+            and obj.__dict__.get("_registry_name") is None
         }
         assert unregistered == {UNREGISTERED_STEP.__name__}, (
             f"unregistered ProcessorStep subclasses changed: {sorted(unregistered)}. "
