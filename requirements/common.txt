@@ -19,6 +19,12 @@
 hydra-core==1.3.2
 omegaconf==2.3.0
 wandb==0.19.1
+# train_config.py builds its schema on pydantic BaseModel/Field/field_validator
+# (v2 API). Upstream FlagScale never pinned it -- requirements/hygon/base.txt
+# lists a bare `pydantic` -- so this version comes from the H800 container the
+# code actually runs in (conda env flagscale-train, python 3.12.0), not from
+# upstream.
+pydantic==2.12.5
 
 # Data science essentials
 numpy==1.26.4

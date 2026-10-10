@@ -23,7 +23,7 @@ from typing import Any, Literal
 from omegaconf import DictConfig, OmegaConf
 from pydantic import BaseModel, Field, field_validator
 
-from flagscale.models.utils.constants import resolve_pretrained_dir
+from flagos_robo.models.utils.constants import resolve_pretrained_dir
 
 TRAIN_CONFIG_NAME = "train_config.json"
 

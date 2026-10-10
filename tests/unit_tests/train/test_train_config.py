@@ -17,7 +17,7 @@ import unittest
 from omegaconf import OmegaConf
 from pydantic import ValidationError
 
-from flagscale.train.train_config import (
+from flagos_robo.train.train_config import (
     CheckpointConfig,
     DataConfig,
     FreezeConfig,
