@@ -22,13 +22,15 @@ from dataclasses import dataclass
 
 import torch
 
-from flagscale.train.perf_monitor.flops_calculator import FLOPSFormulas
-from flagscale.train.perf_monitor.perf_logger import PerfMonitorLogger
+from flagos_robo.train.perf_monitor.flops_calculator import FLOPSFormulas
+from flagos_robo.train.perf_monitor.perf_logger import PerfMonitorLogger
 
-try:
-    from megatron.core.num_microbatches_calculator import get_num_microbatches
-except ImportError:
-    get_num_microbatches = None
+# W2-W3: the `try: from megatron.core.num_microbatches_calculator import
+# get_num_microbatches / except ImportError: get_num_microbatches = None` block
+# that used to sit here is removed. FlagOS-Robo never installs Megatron, so the
+# import always failed and the name was always None -- every call site already
+# took the `is None` branch. Dropping it changes no behaviour; see
+# _get_batch_size below, which now reads args.num_micro_batches directly.
 
 
 @dataclass
@@ -76,11 +78,6 @@ class ModelFLOPSCalculator:
 
     def _get_batch_size(self):
         num_micro_batches = getattr(self.args, "num_micro_batches", 1)
-        if get_num_microbatches is not None:
-            try:
-                num_micro_batches = get_num_microbatches()
-            except AttributeError:
-                pass
         micro_batch_size = getattr(self.args, "micro_batch_size", 1)
         return max(1, micro_batch_size * num_micro_batches)
 

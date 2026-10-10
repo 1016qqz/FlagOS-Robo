@@ -33,33 +33,33 @@ from torch.distributed.device_mesh import init_device_mesh
 from torch.distributed.checkpoint.state_dict import get_model_state_dict, get_optimizer_state_dict, StateDictOptions
 from torch.optim import Optimizer
 
-from flagscale.logger import logger
-from flagscale.train.train_config import TrainConfig
-from flagscale.train.datasets.lerobot_dataset import (
+from flagos_robo.logger import logger
+from flagos_robo.train.train_config import TrainConfig
+from flagos_robo.train.datasets.lerobot_dataset import (
     LeRobotDataset,
     LeRobotDatasetMetadata,
 )
-from flagscale.train.datasets.utils import dataset_to_policy_features
-from flagscale.train.processor import PolicyProcessorPipeline
-from flagscale.models.utils.constants import ACTION, OBS_PREFIX
-from flagscale.models.configs.types import FeatureType
-from flagscale.train.utils.logging_utils import (
+from flagos_robo.train.datasets.utils import dataset_to_policy_features
+from flagos_robo.train.processor import PolicyProcessorPipeline
+from flagos_robo.models.utils.constants import ACTION, OBS_PREFIX
+from flagos_robo.models.configs.types import FeatureType
+from flagos_robo.train.utils.logging_utils import (
     AverageMeter,
     MetricsTracker,
     format_big_number,
 )
-from flagscale.train.utils.train_utils import (
+from flagos_robo.train.utils.train_utils import (
     get_step_checkpoint_dir,
     load_training_state_fsdp2,
     save_checkpoint,
     update_last_checkpoint,
 )
-from flagscale.train.utils.random_utils import serialize_rng_state, deserialize_rng_state
-from flagscale.train.utils.optim_setup import setup_optimizer_and_scheduler
-from flagscale.models.vla.base_policy import TrainablePolicy
-from flagscale.models.vla.pretrained_config import PreTrainedConfig
-import flagscale.models.vla.gr00t_n1_5.processor_gr00t  # noqa: F401  register GR00T processor steps
-from flagscale.platforms import get_platform
+from flagos_robo.train.utils.random_utils import serialize_rng_state, deserialize_rng_state
+from flagos_robo.train.utils.optim_setup import setup_optimizer_and_scheduler
+from flagos_robo.models.vla.base_policy import TrainablePolicy
+from flagos_robo.models.vla.pretrained_config import PreTrainedConfig
+import flagos_robo.models.vla.gr00t_n1_5.processor_gr00t  # noqa: F401  register GR00T processor steps
+from flagos_robo.platforms import get_platform
 
 # Monkey-patch: transformers 4.57+ kernel-hub discovery can't find flash_attn on some platforms
 # (e.g. MUSA), but direct import works fine. Replace _lazy_imports so transformers uses flash_attn directly.
@@ -213,7 +213,7 @@ def make_policy(
     features = dataset_to_policy_features(ds_meta.features)
 
     # Use == instead of `is` for FeatureType.ACTION comparison
-    # because flagscale.FeatureType and lerobot.FeatureType are different enum classes
+    # because flagos_robo.FeatureType and lerobot.FeatureType are different enum classes
     output_features = {
         key: ft
         for key, ft in features.items()
@@ -288,7 +288,7 @@ def make_preprocessor_from_config(
         ValueError: If a step configuration is invalid or step cannot be instantiated.
         KeyError: If a registry name is not found.
     """
-    from flagscale.train.processor.pipeline import ProcessorStepRegistry
+    from flagos_robo.train.processor.pipeline import ProcessorStepRegistry
 
     overrides = overrides or {}
 
@@ -643,7 +643,7 @@ def main(config: TrainConfig, seed: int):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Train GR00T N1.5 model. This script is typically called by the flagscale runner, not directly."
+        description="Train GR00T N1.5 model. This script is typically called by the FlagOS-Robo runner, not directly."
     )
     parser.add_argument(
         "--config-file", type=str, required=True, help="Path to the configuration YAML file"

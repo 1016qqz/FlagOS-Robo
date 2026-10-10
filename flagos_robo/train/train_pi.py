@@ -39,40 +39,40 @@ from torch.distributed.fsdp import (
 )
 from torch.distributed.checkpoint.state_dict import get_model_state_dict, StateDictOptions
 
-from flagscale.logger import logger
-from flagscale.train.train_config import TrainConfig, DataConfig
-from flagscale.train.datasets.transforms import ImageTransforms
-from flagscale.train.datasets.lerobot_dataset import (
+from flagos_robo.logger import logger
+from flagos_robo.train.train_config import TrainConfig, DataConfig
+from flagos_robo.train.datasets.transforms import ImageTransforms
+from flagos_robo.train.datasets.lerobot_dataset import (
     LeRobotDataset,
     LeRobotDatasetMetadata,
 )
-from flagscale.train.datasets.utils import dataset_to_policy_features
-from flagscale.train.processor import PolicyAction, PolicyProcessorPipeline
-from flagscale.train.processor.converters import (
+from flagos_robo.train.datasets.utils import dataset_to_policy_features
+from flagos_robo.train.processor import PolicyAction, PolicyProcessorPipeline
+from flagos_robo.train.processor.converters import (
     batch_to_transition,
     policy_action_to_transition,
     transition_to_batch,
     transition_to_policy_action,
 )
-from flagscale.models.utils.constants import (
+from flagos_robo.models.utils.constants import (
     POLICY_POSTPROCESSOR_DEFAULT_NAME,
     POLICY_PREPROCESSOR_DEFAULT_NAME,
 )
-from flagscale.models.configs.types import PolicyFeature
-from flagscale.models.utils.constants import ACTION, OBS_PREFIX, REWARD
-from flagscale.models.configs.types import FeatureType
-from flagscale.models.pi0.configuration_pi0 import PI0Config
-from flagscale.models.pi0.modeling_pi0 import PI0Policy
-from flagscale.models.pi05.configuration_pi05 import PI05Config
-from flagscale.models.pi05.modeling_pi05 import PI05Policy
-from flagscale.train.utils.logging_utils import AverageMeter, MetricsTracker
-from flagscale.train.utils.optim_setup import CosineDecayWithWarmupSchedulerConfig
-from flagscale.train.utils.train_utils import (
+from flagos_robo.models.configs.types import PolicyFeature
+from flagos_robo.models.utils.constants import ACTION, OBS_PREFIX, REWARD
+from flagos_robo.models.configs.types import FeatureType
+from flagos_robo.models.pi0.configuration_pi0 import PI0Config
+from flagos_robo.models.pi0.modeling_pi0 import PI0Policy
+from flagos_robo.models.pi05.configuration_pi05 import PI05Config
+from flagos_robo.models.pi05.modeling_pi05 import PI05Policy
+from flagos_robo.train.utils.logging_utils import AverageMeter, MetricsTracker
+from flagos_robo.train.utils.optim_setup import CosineDecayWithWarmupSchedulerConfig
+from flagos_robo.train.utils.train_utils import (
     save_checkpoint,
     get_step_checkpoint_dir,
     update_last_checkpoint,
 )
-from flagscale.platforms import get_platform
+from flagos_robo.platforms import get_platform
 
 IMAGENET_STATS = {
     "mean": [[[0.485]], [[0.456]], [[0.406]]],  # (c,1,1)
@@ -307,7 +307,7 @@ def make_policy(
 
     cfg.output_features = {
         # Changed from ft.type is FeatureType.ACTION to ft.type == FeatureType.ACTION
-        # for different enum classes: flagscale.FeatureType vs lerobot.FeatureType
+        # for different enum classes: flagos_robo.FeatureType vs lerobot.FeatureType
         key: ft
         for key, ft in features.items()
         if ft.type == FeatureType.ACTION
@@ -550,7 +550,7 @@ def main(config: TrainConfig, seed: int):
     processor_kwargs["dataset_stats"] = dataset.meta.stats
 
     if not config.data.use_quantiles and model_name == "pi0.5":
-        from flagscale.models.configs.types import NormalizationMode
+        from flagos_robo.models.configs.types import NormalizationMode
 
         policy.config.normalization_mapping = {
             "VISUAL": NormalizationMode.IDENTITY,
@@ -740,7 +740,7 @@ def main(config: TrainConfig, seed: int):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Train PI0/PI0.5 model. This script is typically called by the flagscale runner, not directly."
+        description="Train PI0/PI0.5 model. This script is typically called by the FlagOS-Robo runner, not directly."
     )
     parser.add_argument(
         "--config-file", type=str, required=True, help="Path to the configuration YAML file"

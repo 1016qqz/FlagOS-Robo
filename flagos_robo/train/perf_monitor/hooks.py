@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import torch
 
-from flagscale.train.perf_monitor.perf_metrics import FLOPSMeasurementCallback
+from flagos_robo.train.perf_monitor.perf_metrics import FLOPSMeasurementCallback
 
 _perf_monitor_callback = None
 
