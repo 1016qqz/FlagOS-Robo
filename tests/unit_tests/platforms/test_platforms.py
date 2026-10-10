@@ -91,19 +91,27 @@ class TestPlatformContract:
     def test_consumer_api_surface_is_complete(self, backend):
         """Pins the exact API the migrated consumers call.
 
-        Harvested from every ``get_platform().<x>`` call site in FlagScale
-        @ f8e9a62c (8 distinct names). ``current_device`` was the only one
-        missing from ``flagscale/platforms/`` - that is the W1 gap. All 8 are
-        callables, not properties: callers write ``get_platform().name()``.
+        Harvested from the platform call sites in FlagScale @ f8e9a62c. All
+        are callables, not properties: callers write ``get_platform().name()``.
+
+        The original W1 list had 8 names, taken from a grep for the chained
+        form ``get_platform().<x>``. That grep is blind to a caller that
+        binds the platform to a variable first, which is how
+        ``train/utils/random_utils.py`` reaches it - so ``get_rng_state`` and
+        ``set_rng_state`` were missing until the W2 ``train/utils/`` batch.
+        Both forms are now covered; see ``test_platform_rng.py`` for the
+        signature and round-trip checks on the two added methods.
         """
         required = {
             "amp_device_type",
             "current_device",
             "device",
             "dist_backend",
+            "get_rng_state",
             "manual_seed_all",
             "name",
             "set_device",
+            "set_rng_state",
             "supports_distributions_on_device",
         }
         inst = backend()

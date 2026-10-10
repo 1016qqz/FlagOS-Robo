@@ -58,5 +58,17 @@ class PlatformTXDA(PlatformBase):
     def manual_seed_all(self, seed):
         torch.cuda.manual_seed_all(seed)
 
+    def get_rng_state(self, device=None):
+        if device is None:
+            return torch.cuda.get_rng_state()
+
+        return torch.cuda.get_rng_state(device)
+
+    def set_rng_state(self, new_state, device_index=None):
+        if device_index is None:
+            return torch.cuda.set_rng_state(new_state)
+
+        return torch.cuda.set_rng_state(new_state, device_index)
+
     def amp_device_type(self) -> str:
         return "cuda"

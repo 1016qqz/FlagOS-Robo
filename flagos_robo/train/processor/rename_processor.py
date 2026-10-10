@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .pipeline import ObservationProcessorStep, ProcessorStepRegistry
-from flagscale.models.configs.types import PipelineFeatureType, PolicyFeature
+from flagos_robo.models.configs.types import PipelineFeatureType, PolicyFeature
 
 
 @dataclass

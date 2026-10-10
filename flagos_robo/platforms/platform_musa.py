@@ -57,6 +57,22 @@ class PlatformMUSA(PlatformBase):
 
         torch.musa.manual_seed_all(seed)
 
+    def get_rng_state(self, device=None):
+        import torch_musa  # noqa: F401
+
+        if device is None:
+            return torch.musa.get_rng_state()
+
+        return torch.musa.get_rng_state(device)
+
+    def set_rng_state(self, new_state, device_index=None):
+        import torch_musa  # noqa: F401
+
+        if device_index is None:
+            return torch.musa.set_rng_state(new_state)
+
+        return torch.musa.set_rng_state(new_state, device_index)
+
     def amp_device_type(self) -> str:
         return "musa"
 

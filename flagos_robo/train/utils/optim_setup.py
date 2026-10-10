@@ -57,10 +57,10 @@ import torch.nn as nn
 from torch.optim.lr_scheduler import LambdaLR
 from transformers import get_scheduler
 
-from flagscale.logger import logger
+from flagos_robo.logger import logger
 
 if TYPE_CHECKING:
-    from flagscale.train.train_config import (
+    from flagos_robo.train.train_config import (
         FreezeConfig,
         OptimizerConfig,
         SchedulerConfig,

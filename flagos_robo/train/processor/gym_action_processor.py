@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from .converters import to_tensor
 from .core import EnvAction, EnvTransition, PolicyAction
 from .pipeline import ActionProcessorStep, ProcessorStep, ProcessorStepRegistry
-from flagscale.models.configs.types import PipelineFeatureType, PolicyFeature
+from flagos_robo.models.configs.types import PipelineFeatureType, PolicyFeature
 
 
 @ProcessorStepRegistry.register("torch2numpy_action_processor")

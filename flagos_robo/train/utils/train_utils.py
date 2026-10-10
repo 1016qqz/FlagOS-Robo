@@ -27,7 +27,7 @@ from torch.distributed.checkpoint.state_dict import (
 )
 from torch.optim import Optimizer
 
-from flagscale.models.utils.constants import (
+from flagos_robo.models.utils.constants import (
     CHECKPOINTS_DIR,
     DATALOADER_STATE,
     LAST_CHECKPOINT_LINK,
@@ -39,9 +39,9 @@ from flagscale.models.utils.constants import (
     TRAINING_STATE_DIR,
     TRAINING_STEP,
 )
-from flagscale.train.datasets.utils import flatten_dict, load_json, unflatten_dict, write_json
-from flagscale.train.utils.io_utils import deserialize_json_into_object
-from flagscale.train.utils.random_utils import load_rng_state, save_rng_state
+from flagos_robo.train.datasets.utils import flatten_dict, load_json, unflatten_dict, write_json
+from flagos_robo.train.utils.io_utils import deserialize_json_into_object
+from flagos_robo.train.utils.random_utils import load_rng_state, save_rng_state
 
 
 class StatefulDistributedSampler(torch.utils.data.distributed.DistributedSampler):

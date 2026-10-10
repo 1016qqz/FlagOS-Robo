@@ -180,8 +180,13 @@ error: planned entry(ies) name a module that does not exist in ../FlagScale (typ
 ```bash
 python3 tools/check_import_closure.py --source-root ../FlagScale --package flagscale \
   --planned-from docs/migration_scope.txt --discover-seeds \
-  --examples-only pi0 --examples-only pi0_5 --examples-only gr00t_n1_5
+  --examples-only pi0 --examples-only pi0_5 --examples-only gr00t_n1_5 \
+  --cut flagscale.models.vla.qwen_gr00t --cut flagscale.models.vla.vlm
 ```
+这条与 §1 的训练入口扫描是同一条命令，参数必须保持一致——
+`tests/unit_tests/tools/test_ci_workflow.py` 会把本文件和 `.github/workflows/ci.yml`
+里出现的全部扫描命令收集起来比对参数集合，少一个 `--cut` 就会报错。
+
 报出来的 OUTSIDE 项就是你漏掉的依赖。**不要手动猜，让工具告诉你。**
 W1 的 `serve.utils` / `serve.metric` 就是这么发现的——读代码没读出来。
 

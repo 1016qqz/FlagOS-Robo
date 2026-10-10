@@ -33,10 +33,10 @@ import torch.utils
 from huggingface_hub import HfApi, snapshot_download
 from huggingface_hub.errors import RevisionNotFoundError
 
-from flagscale.models.utils.constants import HF_LEROBOT_HOME
-from flagscale.train.datasets.compute_stats import aggregate_stats, compute_episode_stats
-from flagscale.train.datasets.image_writer import AsyncImageWriter, write_image
-from flagscale.train.datasets.utils import (
+from flagos_robo.models.utils.constants import HF_LEROBOT_HOME
+from flagos_robo.train.datasets.compute_stats import aggregate_stats, compute_episode_stats
+from flagos_robo.train.datasets.image_writer import AsyncImageWriter, write_image
+from flagos_robo.train.datasets.utils import (
     DEFAULT_EPISODES_PATH,
     DEFAULT_FEATURES,
     DEFAULT_IMAGE_PATH,
@@ -64,7 +64,7 @@ from flagscale.train.datasets.utils import (
     write_stats,
     write_tasks,
 )
-from flagscale.train.datasets.video_utils import (
+from flagos_robo.train.datasets.video_utils import (
     VideoFrame,
     concatenate_video_files,
     decode_video_frames,

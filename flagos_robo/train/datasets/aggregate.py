@@ -24,9 +24,9 @@ from pathlib import Path
 import pandas as pd
 import tqdm
 
-from flagscale.train.datasets.compute_stats import aggregate_stats
-from flagscale.train.datasets.lerobot_dataset import LeRobotDatasetMetadata
-from flagscale.train.datasets.utils import (
+from flagos_robo.train.datasets.compute_stats import aggregate_stats
+from flagos_robo.train.datasets.lerobot_dataset import LeRobotDatasetMetadata
+from flagos_robo.train.datasets.utils import (
     DEFAULT_CHUNK_SIZE,
     DEFAULT_DATA_FILE_SIZE_IN_MB,
     DEFAULT_DATA_PATH,
@@ -41,7 +41,7 @@ from flagscale.train.datasets.utils import (
     write_stats,
     write_tasks,
 )
-from flagscale.train.datasets.video_utils import concatenate_video_files, get_video_duration_in_s
+from flagos_robo.train.datasets.video_utils import concatenate_video_files, get_video_duration_in_s
 
 
 def validate_all_metadata(all_metadata: list[LeRobotDatasetMetadata]):

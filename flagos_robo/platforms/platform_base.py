@@ -78,6 +78,30 @@ class PlatformBase(ABC):
         """Set the seed for all devices."""
         ...
 
+    @abc.abstractmethod
+    def get_rng_state(self, device=None):
+        """Return the RNG state of ``device`` (current device when None).
+
+        Added in W2 alongside the ``train/utils/`` batch. The W1 API survey
+        only grepped the chained form ``get_platform().X``, so it never saw
+        ``random_utils.py``, which binds the platform to a variable first
+        (``cur_platform = get_platform()``) and then calls
+        ``cur_platform.get_rng_state()`` at line 94 to build the checkpoint
+        RNG dict. Signature follows Megatron-LM-FL
+        ``megatron/plugin/platform/platform_base.py:106``.
+        """
+        ...
+
+    @abc.abstractmethod
+    def set_rng_state(self, new_state, device_index=None):
+        """Restore the RNG state onto ``device_index`` (current when None).
+
+        Counterpart of :meth:`get_rng_state`, called by ``random_utils.py``
+        line 104 when resuming from a checkpoint. Signature follows
+        Megatron-LM-FL ``megatron/plugin/platform/platform_base.py:102``.
+        """
+        ...
+
     # ---- AMP ----
 
     @abc.abstractmethod

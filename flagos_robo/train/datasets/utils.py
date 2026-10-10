@@ -41,9 +41,9 @@ from huggingface_hub.errors import RevisionNotFoundError
 from PIL import Image as PILImage
 from torchvision import transforms
 
-from flagscale.models.configs.types import FeatureType, PolicyFeature
-from flagscale.models.utils.constants import ACTION, OBS_ENV_STATE, OBS_STR
-from flagscale.train.datasets.backward_compatibility import (
+from flagos_robo.models.configs.types import FeatureType, PolicyFeature
+from flagos_robo.models.utils.constants import ACTION, OBS_ENV_STATE, OBS_STR
+from flagos_robo.train.datasets.backward_compatibility import (
     FUTURE_MESSAGE,
     BackwardCompatibilityError,
     ForwardCompatibilityError,

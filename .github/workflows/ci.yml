@@ -102,14 +102,28 @@ jobs:
           ref: f8e9a62c499d526a6ffa47f533bcf342330b7326
           path: _ci/FlagScale
 
-      - name: Scan migration scope
+      - name: Scan migration scope (training entry points)
         # Must stay byte-identical to the command in docs/MIGRATION_SOP.md so
         # that CI and the documented manual procedure cannot drift apart.
+        # test_ci_workflow.py compares the flag sets of the two.
         run: |
           python tools/check_import_closure.py \
             --source-root _ci/FlagScale --package flagscale \
             --planned-from docs/migration_scope.txt \
             --discover-seeds \
+            --examples-only pi0 --examples-only pi0_5 --examples-only gr00t_n1_5 \
+            --cut flagscale.models.vla.qwen_gr00t --cut flagscale.models.vla.vlm
+
+      - name: Scan migration scope (launcher)
+        # --discover-seeds cannot find the runner: nothing under examples/
+        # imports it, the CLI reaches it by string. Both entry points must be
+        # named explicitly. See docs/MIGRATION_SOP.md.
+        run: |
+          python tools/check_import_closure.py \
+            --source-root _ci/FlagScale --package flagscale \
+            --planned-from docs/migration_scope.txt \
+            --seed flagscale.runner.runner_train \
+            --seed flagscale.runner.backend.backend_native_train \
             --examples-only pi0 --examples-only pi0_5 --examples-only gr00t_n1_5
 
   # ---------------------------------------------------------------- tests

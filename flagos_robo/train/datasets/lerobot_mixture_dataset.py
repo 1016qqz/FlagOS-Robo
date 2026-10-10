@@ -20,8 +20,8 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from flagscale.logger import logger
-from flagscale.train.datasets.lerobot_dataset import LeRobotDataset, LeRobotDatasetMetadata
+from flagos_robo.logger import logger
+from flagos_robo.train.datasets.lerobot_dataset import LeRobotDataset, LeRobotDatasetMetadata
 
 
 def safe_hash(input_tuple) -> int:

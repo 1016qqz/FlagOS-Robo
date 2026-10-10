@@ -57,5 +57,21 @@ class PlatformNPU(PlatformBase):
 
         torch.npu.manual_seed_all(seed)
 
+    def get_rng_state(self, device=None):
+        import torch_npu  # noqa: F401
+
+        if device is None:
+            return torch.npu.get_rng_state()
+
+        return torch.npu.get_rng_state(device)
+
+    def set_rng_state(self, new_state, device_index=None):
+        import torch_npu  # noqa: F401
+
+        if device_index is None:
+            return torch.npu.set_rng_state(new_state)
+
+        return torch.npu.set_rng_state(new_state, device_index)
+
     def amp_device_type(self) -> str:
         return "npu"

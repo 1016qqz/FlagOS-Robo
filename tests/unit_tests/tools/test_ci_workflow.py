@@ -143,23 +143,48 @@ class TestNoVersionDrift:
 
 
 class TestCommandsMatchTheDocs:
-    def test_ci_closure_command_matches_the_sop(self, wf_flat):
+    def test_ci_closure_commands_match_the_sop(self, wf_flat):
         """If CI and the documented manual procedure diverge, one of them is
-        wrong and nobody finds out."""
+        wrong and nobody finds out.
+
+        There are two closure scans, not one: the training entry points are
+        found by --discover-seeds, while the launcher has to be named with
+        two explicit --seed flags because nothing under examples/ imports it.
+        Comparing only the first command in each file would let the second
+        drift unnoticed, so both are collected and compared as a set.
+        """
         sop = (REPO_ROOT / "docs" / "MIGRATION_SOP.md").read_text().replace("\\\n", " ")
 
-        def flags_of(blob):
+        def invocations(blob):
+            found = []
             for line in blob.splitlines():
                 if "check_import_closure.py" in line and "--source-root" in line:
-                    return set(re.findall(r"--[a-z-]+", line))
-            return None
+                    # frozenset of flags; values differ (paths, _ci/ prefix)
+                    found.append(frozenset(re.findall(r"--[a-z-]+", line)))
+            return found
 
-        sop_flags, ci_flags = flags_of(sop), flags_of(wf_flat)
-        assert sop_flags, "SOP has no closure command with --source-root"
-        assert ci_flags, "CI has no closure command with --source-root"
-        assert sop_flags == ci_flags, (
-            f"flag drift: sop-only={sop_flags - ci_flags} ci-only={ci_flags - sop_flags}"
+        sop_cmds, ci_cmds = invocations(sop), invocations(wf_flat)
+        assert sop_cmds, "SOP has no closure command with --source-root"
+        assert ci_cmds, "CI has no closure command with --source-root"
+        # The SOP shows the entry-point scan twice -- once in the gate section
+        # and once inside the per-batch procedure -- so compare distinct flag
+        # shapes, not occurrence counts. Two shapes is the invariant: the
+        # --discover-seeds scan and the two-explicit---seed launcher scan.
+        assert len(set(sop_cmds)) == 2, (
+            f"expected 2 distinct documented closure scans (entry points + "
+            f"launcher), found {len(set(sop_cmds))}: "
+            f"{[sorted(c) for c in set(sop_cmds)]}"
         )
+        assert set(sop_cmds) == set(ci_cmds), (
+            f"flag drift: sop-only={[sorted(c) for c in set(sop_cmds) - set(ci_cmds)]} "
+            f"ci-only={[sorted(c) for c in set(ci_cmds) - set(sop_cmds)]}"
+        )
+
+    def test_ci_runs_both_closure_scans(self, wf_flat):
+        """The launcher scan is the one that caught the W1 dead scope entry;
+        it must not be dropped from CI."""
+        assert "--seed flagscale.runner.runner_train" in wf_flat
+        assert "--seed flagscale.runner.backend.backend_native_train" in wf_flat
 
     def test_referenced_repo_paths_exist(self, wf_flat):
         missing = []

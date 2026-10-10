@@ -29,16 +29,16 @@ from torch import Tensor
 from .converters import from_tensor_to_numpy, to_tensor
 from .core import EnvTransition, PolicyAction, TransitionKey
 from .pipeline import PolicyProcessorPipeline, ProcessorStep, ProcessorStepRegistry
-from flagscale.models.configs.types import (
+from flagos_robo.models.configs.types import (
     FeatureType,
     NormalizationMode,
     PipelineFeatureType,
     PolicyFeature,
 )
-from flagscale.models.utils.constants import ACTION
+from flagos_robo.models.utils.constants import ACTION
 
 if TYPE_CHECKING:
-    from flagscale.train.datasets.lerobot_dataset import LeRobotDataset
+    from flagos_robo.train.datasets.lerobot_dataset import LeRobotDataset
 
 
 @dataclass
@@ -61,7 +61,7 @@ class _NormalizationMixin:
     Examples:
         ```python
         # Common use case: Override with dataset stats
-        from flagscale.train.datasets import LeRobotDataset
+        from flagos_robo.train.datasets import LeRobotDataset
 
         dataset = LeRobotDataset("my_dataset")
         pipeline = DataProcessorPipeline.from_pretrained(

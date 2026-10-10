@@ -21,9 +21,9 @@ from typing import Any
 
 import torch
 
-from flagscale.models.configs.types import FeatureType, PipelineFeatureType, PolicyFeature
-from flagscale.models.utils.constants import ACTION
-from flagscale.train.processor import (
+from flagos_robo.models.configs.types import FeatureType, PipelineFeatureType, PolicyFeature
+from flagos_robo.models.utils.constants import ACTION
+from flagos_robo.train.processor import (
     ActionProcessorStep,
     PolicyAction,
     ProcessorStepRegistry,

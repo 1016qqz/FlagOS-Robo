@@ -18,10 +18,10 @@ import re
 from collections.abc import Sequence
 from typing import Any
 
-from flagscale.models.configs.types import PipelineFeatureType
-from flagscale.models.utils.constants import ACTION, OBS_IMAGES, OBS_STATE, OBS_STR
-from flagscale.train.datasets.utils import hw_to_dataset_features
-from flagscale.train.processor import DataProcessorPipeline
+from flagos_robo.models.configs.types import PipelineFeatureType
+from flagos_robo.models.utils.constants import ACTION, OBS_IMAGES, OBS_STATE, OBS_STR
+from flagos_robo.train.datasets.utils import hw_to_dataset_features
+from flagos_robo.train.processor import DataProcessorPipeline
 
 
 def create_initial_features(

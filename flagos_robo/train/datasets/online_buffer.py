@@ -30,7 +30,7 @@ from typing import Any
 import numpy as np
 import torch
 
-from flagscale.train.datasets.lerobot_dataset import LeRobotDataset
+from flagos_robo.train.datasets.lerobot_dataset import LeRobotDataset
 
 
 def _make_memmap_safe(**kwargs) -> np.memmap:

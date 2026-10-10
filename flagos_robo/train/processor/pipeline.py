@@ -52,12 +52,12 @@ from safetensors.torch import load_file, save_file
 
 from .converters import batch_to_transition, create_transition, transition_to_batch
 from .core import EnvAction, EnvTransition, PolicyAction, RobotAction, TransitionKey
-from flagscale.models.utils.constants import resolve_pretrained_dir
+from flagos_robo.models.utils.constants import resolve_pretrained_dir
 
 if TYPE_CHECKING:
-    from flagscale.models.configs.types import PipelineFeatureType, PolicyFeature
+    from flagos_robo.models.configs.types import PipelineFeatureType, PolicyFeature
 
-from flagscale.train.utils.hub import HubMixin
+from flagos_robo.train.utils.hub import HubMixin
 
 # Generic type variables for pipeline input and output.
 TInput = TypeVar("TInput")
@@ -436,7 +436,7 @@ class DataProcessorPipeline(HubMixin, Generic[TInput, TOutput]):
         """
         if save_directory is None:
             # Use default directory in HF_LEROBOT_HOME
-            from flagscale.models.utils.constants import HF_LEROBOT_HOME
+            from flagos_robo.models.utils.constants import HF_LEROBOT_HOME
 
             sanitized_name = re.sub(r"[^a-zA-Z0-9_]", "_", self.name.lower())
             save_directory = HF_LEROBOT_HOME / "processors" / sanitized_name

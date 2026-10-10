@@ -24,7 +24,7 @@ from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
     checkpoint_wrapper as dist_checkpoint_wrapper,
 )
 
-from flagscale.train.train_config import ActivationCheckpointConfig
+from flagos_robo.train.train_config import ActivationCheckpointConfig
 
 # Spelling matches PyTorch's internal op registration (not a typo).
 _FUSED_ATTN_OP_NAME = "_scaled_dot_product_fused_attention_override" + "able"

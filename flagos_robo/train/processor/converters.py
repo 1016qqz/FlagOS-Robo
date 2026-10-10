@@ -28,7 +28,7 @@ import numpy as np
 import torch
 
 from .core import EnvTransition, PolicyAction, RobotAction, RobotObservation, TransitionKey
-from flagscale.models.utils.constants import ACTION, DONE, OBS_PREFIX, REWARD, TRUNCATED
+from flagos_robo.models.utils.constants import ACTION, DONE, OBS_PREFIX, REWARD, TRUNCATED
 
 
 @singledispatch

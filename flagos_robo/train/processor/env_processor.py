@@ -20,8 +20,8 @@ from dataclasses import dataclass
 import torch
 
 from .pipeline import ObservationProcessorStep, ProcessorStepRegistry
-from flagscale.models.configs.types import PipelineFeatureType, PolicyFeature
-from flagscale.models.utils.constants import OBS_IMAGES, OBS_STATE
+from flagos_robo.models.configs.types import PipelineFeatureType, PolicyFeature
+from flagos_robo.models.utils.constants import OBS_IMAGES, OBS_STATE
 
 
 @dataclass

@@ -26,11 +26,11 @@ from typing import Any
 
 import torch
 
-from megatron.plugin.platform import get_platform
+from flagos_robo.platforms import get_platform
 
 from .core import EnvTransition, PolicyAction, TransitionKey
 from .pipeline import ProcessorStep, ProcessorStepRegistry
-from flagscale.models.configs.types import PipelineFeatureType, PolicyFeature
+from flagos_robo.models.configs.types import PipelineFeatureType, PolicyFeature
 
 cur_platform = get_platform()
 

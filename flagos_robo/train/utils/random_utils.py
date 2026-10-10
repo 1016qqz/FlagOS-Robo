@@ -22,10 +22,10 @@ import numpy as np
 import torch
 from safetensors.torch import load_file, save_file
 
-from megatron.plugin.platform import get_platform
+from flagos_robo.platforms import get_platform
 
-from flagscale.models.utils.constants import RNG_STATE
-from flagscale.train.datasets.utils import flatten_dict, unflatten_dict
+from flagos_robo.models.utils.constants import RNG_STATE
+from flagos_robo.train.datasets.utils import flatten_dict, unflatten_dict
 
 cur_platform = get_platform()
 

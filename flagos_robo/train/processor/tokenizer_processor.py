@@ -33,8 +33,8 @@ from transformers import AutoTokenizer
 
 from .core import EnvTransition, TransitionKey
 from .pipeline import ObservationProcessorStep, ProcessorStepRegistry
-from flagscale.models.configs.types import FeatureType, PipelineFeatureType, PolicyFeature
-from flagscale.models.utils.constants import OBS_LANGUAGE_ATTENTION_MASK, OBS_LANGUAGE_TOKENS
+from flagos_robo.models.configs.types import FeatureType, PipelineFeatureType, PolicyFeature
+from flagos_robo.models.utils.constants import OBS_LANGUAGE_ATTENTION_MASK, OBS_LANGUAGE_TOKENS
 
 
 @dataclass

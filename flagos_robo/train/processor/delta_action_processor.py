@@ -20,7 +20,7 @@ from dataclasses import dataclass
 
 from .core import PolicyAction, RobotAction
 from .pipeline import ActionProcessorStep, ProcessorStepRegistry, RobotActionProcessorStep
-from flagscale.models.configs.types import FeatureType, PipelineFeatureType, PolicyFeature
+from flagos_robo.models.configs.types import FeatureType, PipelineFeatureType, PolicyFeature
 
 
 @ProcessorStepRegistry.register("map_tensor_to_delta_action_dict")

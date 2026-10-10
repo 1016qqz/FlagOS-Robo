@@ -23,8 +23,8 @@ import torch
 from torch import Tensor
 
 from .pipeline import ObservationProcessorStep, ProcessorStepRegistry
-from flagscale.models.configs.types import PipelineFeatureType, PolicyFeature
-from flagscale.models.utils.constants import (
+from flagos_robo.models.configs.types import PipelineFeatureType, PolicyFeature
+from flagos_robo.models.utils.constants import (
     OBS_ENV_STATE,
     OBS_IMAGE,
     OBS_IMAGES,
