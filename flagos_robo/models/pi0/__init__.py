@@ -1,4 +1,8 @@
-# Copyright 2026 FlagOS Contributors
+# Copied from https://github.com/huggingface/lerobot/blob/2b304eeb841ae6c371e3dd341bbbb9dd254b07cb/src/lerobot/policies/pi0/__init__.py
+
+#!/usr/bin/env python
+
+# Copyright 2025 Physical Intelligence and The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,4 +16,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# W2-W3: migrate from flagscale/models/pi0/ (4 files, 1674 LOC)
+from .configuration_pi0 import PI0Config
+from .modeling_pi0 import PI0Policy
+from .processor_pi0 import make_pi0_pre_post_processors
+
+__all__ = ["PI0Config", "PI0Policy", "make_pi0_pre_post_processors"]

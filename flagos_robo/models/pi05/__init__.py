@@ -1,4 +1,8 @@
-# Copyright 2026 FlagOS Contributors
+# Copied from https://github.com/huggingface/lerobot/blob/2b304eeb841ae6c371e3dd341bbbb9dd254b07cb/src/lerobot/policies/pi05/__init__.py
+
+#!/usr/bin/env python
+
+# Copyright 2025 Physical Intelligence and The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,4 +16,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# W2-W3: migrate from flagscale/models/pi05/ (6 files, 2053 LOC)
+from .configuration_pi05 import PI05Config
+from .modeling_pi05 import PI05Policy
+from .processor_pi05 import make_pi05_pre_post_processors
+
+__all__ = ["PI05Config", "PI05Policy", "make_pi05_pre_post_processors"]
