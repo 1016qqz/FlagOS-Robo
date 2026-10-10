@@ -34,22 +34,22 @@ from transformers.models.gemma import modeling_gemma
 from typing_extensions import Unpack
 
 # from lerobot.configs.policies import PreTrainedConfig
-from flagscale.models.pi0.configuration_pi0 import DEFAULT_IMAGE_SIZE, PI0Config
-from flagscale.models.pi05.pi_gemma import (
+from flagos_robo.models.pi0.configuration_pi0 import DEFAULT_IMAGE_SIZE, PI0Config
+from flagos_robo.models.pi05.pi_gemma import (
     PaliGemmaForConditionalGenerationWithPiGemma,
     PiGemmaForCausalLM,
     _gated_residual,
     layernorm_forward,
 )
-from flagscale.models.vla.base_policy import TrainablePolicy
-from flagscale.platforms import get_platform
+from flagos_robo.models.vla.base_policy import TrainablePolicy
+from flagos_robo.platforms import get_platform
 
 T = TypeVar("T", bound="PI0Policy")
 
 # TODO(yupu): Remove this
 # from lerobot.policies.rtc.modeling_rtc import RTCProcessor
 
-from flagscale.models.utils.constants import (
+from flagos_robo.models.utils.constants import (
     ACTION,
     OBS_LANGUAGE_ATTENTION_MASK,
     OBS_LANGUAGE_TOKENS,

@@ -16,6 +16,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# W2-W3: migrated from flagscale/models/pi0/ (4 files, 1674 LOC)
+
 from .configuration_pi0 import PI0Config
 from .modeling_pi0 import PI0Policy
 from .processor_pi0 import make_pi0_pre_post_processors

@@ -30,7 +30,7 @@ from diffusers.models.embeddings import (
 )
 from torch import nn
 
-from flagscale.logger import logger
+from flagos_robo.logger import logger
 
 
 class TimestepEncoder(nn.Module):

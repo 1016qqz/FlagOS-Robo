@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# W2-W3: migrated from flagscale/models/vla/ (21 of 27 files); qwen_gr00t/ and
+# vlm/ stay in FlagScale.
+
 from .base_policy import TrainablePolicy
 from .gr00t_n1_5 import Gr00tN15
 from .protocols import ActionModel, VLMBackbone
@@ -23,17 +26,16 @@ from .registry import (
 )
 from .utils import get_vlm_config
 
-# TODO: (yupu) QwenGr00t and VLM backbones require a newer transformers (Qwen3VLForConditionalGeneration)
-# that is not available in the PI0/PI0.5 conda env. Consolidate into a single env and remove this.
-try:
-    from .qwen_gr00t import QwenGr00t
-    from .vlm import Qwen3VLBackbone, Qwen25VLBackbone, QwenVLBackbone
-except ImportError:
-    pass
+# qwen_gr00t/ and vlm/ are deliberately NOT part of FlagOS-Robo: they need a
+# newer transformers (Qwen3VLForConditionalGeneration) than the PI0/PI0.5 env
+# provides, so they stay in FlagScale. The try/except that used to import
+# QwenGr00t / Qwen{,25,3}VLBackbone here is gone along with them, and so are
+# their four entries in __all__ -- a name left in __all__ with nothing bound
+# to it makes `from ... import *` raise AttributeError.
 
 try:
-    from flagscale.models.pi0.modeling_pi0 import PI0Policy
-    from flagscale.models.pi05.modeling_pi05 import PI05Policy
+    from flagos_robo.models.pi0.modeling_pi0 import PI0Policy
+    from flagos_robo.models.pi05.modeling_pi05 import PI05Policy
 except ImportError:
     pass
 
@@ -47,10 +49,6 @@ __all__ = [
     "build_action_model",
     "get_vlm_config",
     "Gr00tN15",
-    "QwenGr00t",
     "PI0Policy",
     "PI05Policy",
-    "QwenVLBackbone",
-    "Qwen25VLBackbone",
-    "Qwen3VLBackbone",
 ]

@@ -23,9 +23,9 @@ from typing import TYPE_CHECKING, ClassVar
 from safetensors.torch import load_model, save_file
 from torch import Tensor, nn
 
-from flagscale.models.configs.types import FeatureType, PolicyFeature
-from flagscale.models.utils.constants import SAFETENSORS_FILE, resolve_pretrained_dir
-from flagscale.models.vla.pretrained_config import PreTrainedConfig
+from flagos_robo.models.configs.types import FeatureType, PolicyFeature
+from flagos_robo.models.utils.constants import SAFETENSORS_FILE, resolve_pretrained_dir
+from flagos_robo.models.vla.pretrained_config import PreTrainedConfig
 
 if TYPE_CHECKING:
     import builtins

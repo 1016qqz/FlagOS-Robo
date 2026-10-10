@@ -27,12 +27,12 @@ from torch.distributions import Beta
 from transformers import PretrainedConfig, PreTrainedModel
 from transformers.feature_extraction_utils import BatchFeature
 
-from flagscale.models.utils.constants import HF_LEROBOT_HOME
-from flagscale.models.vla.action_model.flow_matching_head.cross_attention_dit import (
+from flagos_robo.models.utils.constants import HF_LEROBOT_HOME
+from flagos_robo.models.vla.action_model.flow_matching_head.cross_attention_dit import (
     DiT,
     SelfAttentionTransformer,
 )
-from flagscale.models.vla.action_model.gr00t_action_header import (
+from flagos_robo.models.vla.action_model.gr00t_action_header import (
     CategorySpecificMLP,
     FlowmatchingActionHeadConfig,
     MultiEmbodimentActionEncoder,
@@ -137,10 +137,10 @@ class EagleBackbone(nn.Module):
         super().__init__()
         assert not reproject_vision, "Reproject vision is not implemented here, set to False"
 
-        from flagscale.models.vla.gr00t_n1_5.eagle2.configuration_eagle2_5_vl import (
+        from flagos_robo.models.vla.gr00t_n1_5.eagle2.configuration_eagle2_5_vl import (
             Eagle25VLConfig,
         )
-        from flagscale.models.vla.gr00t_n1_5.eagle2.modeling_eagle2_5_vl import (
+        from flagos_robo.models.vla.gr00t_n1_5.eagle2.modeling_eagle2_5_vl import (
             Eagle25VLForConditionalGeneration,
         )
 

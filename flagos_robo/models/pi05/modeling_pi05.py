@@ -32,21 +32,21 @@ from transformers.models.gemma import modeling_gemma
 from typing_extensions import Unpack
 
 # from lerobot.configs.policies import PreTrainedConfig
-from flagscale.models.pi05.configuration_pi05 import DEFAULT_IMAGE_SIZE, PI05Config
-from flagscale.models.pi05.pi_gemma import (
+from flagos_robo.models.pi05.configuration_pi05 import DEFAULT_IMAGE_SIZE, PI05Config
+from flagos_robo.models.pi05.pi_gemma import (
     PaliGemmaForConditionalGenerationWithPiGemma,
     PiGemmaForCausalLM,
     _gated_residual,
     layernorm_forward,
 )
-from flagscale.models.utils.constants import (
+from flagos_robo.models.utils.constants import (
     ACTION,
     OBS_LANGUAGE_ATTENTION_MASK,
     OBS_LANGUAGE_TOKENS,
     OPENPI_ATTENTION_MASK_VALUE,
 )
-from flagscale.models.vla.base_policy import TrainablePolicy
-from flagscale.platforms import get_platform
+from flagos_robo.models.vla.base_policy import TrainablePolicy
+from flagos_robo.platforms import get_platform
 
 T = TypeVar("T", bound="PI05Policy")
 

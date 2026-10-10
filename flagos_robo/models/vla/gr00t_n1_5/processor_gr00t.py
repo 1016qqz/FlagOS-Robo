@@ -24,15 +24,15 @@ from einops import rearrange
 from PIL import Image
 from transformers import AutoProcessor, ProcessorMixin
 
-from flagscale.models.utils.constants import (
+from flagos_robo.models.utils.constants import (
     ACTION,
     HF_LEROBOT_HOME,
     OBS_IMAGE,
     OBS_IMAGES,
     OBS_STATE,
 )
-from flagscale.train.processor.core import EnvTransition, TransitionKey
-from flagscale.train.processor.pipeline import ProcessorStep, ProcessorStepRegistry
+from flagos_robo.train.processor.core import EnvTransition, TransitionKey
+from flagos_robo.train.processor.pipeline import ProcessorStep, ProcessorStepRegistry
 
 DEFAULT_TOKENIZER_ASSETS_REPO = "lerobot/eagle2hg-processor-groot-n1p5"
 

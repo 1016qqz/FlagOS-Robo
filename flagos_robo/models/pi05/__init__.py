@@ -16,6 +16,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# W2-W3: migrated from flagscale/models/pi05/ (6 files incl. README, 2053 LOC)
+
 from .configuration_pi05 import PI05Config
 from .modeling_pi05 import PI05Policy
 from .processor_pi05 import make_pi05_pre_post_processors

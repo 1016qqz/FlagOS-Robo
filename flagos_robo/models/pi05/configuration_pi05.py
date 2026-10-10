@@ -24,8 +24,8 @@ from typing import Any
 
 import draccus
 
-from flagscale.models.configs.types import FeatureType, NormalizationMode, PolicyFeature
-from flagscale.models.vla.pretrained_config import PreTrainedConfig
+from flagos_robo.models.configs.types import FeatureType, NormalizationMode, PolicyFeature
+from flagos_robo.models.vla.pretrained_config import PreTrainedConfig
 
 DEFAULT_IMAGE_SIZE = 224
 

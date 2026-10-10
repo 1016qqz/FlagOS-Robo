@@ -17,12 +17,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from flagscale.models.configs.types import FeatureType, NormalizationMode, PolicyFeature
-from flagscale.models.utils.constants import ACTION, OBS_STATE
-from flagscale.models.vla.pretrained_config import PreTrainedConfig
+from flagos_robo.models.configs.types import FeatureType, NormalizationMode, PolicyFeature
+from flagos_robo.models.utils.constants import ACTION, OBS_STATE
+from flagos_robo.models.vla.pretrained_config import PreTrainedConfig
 
 if TYPE_CHECKING:
-    from flagscale.train.train_config import TrainConfig
+    from flagos_robo.train.train_config import TrainConfig
 
 
 @dataclass

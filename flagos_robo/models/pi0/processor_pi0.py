@@ -20,13 +20,13 @@ from typing import Any
 
 import torch
 
-from flagscale.models.configs.types import PipelineFeatureType, PolicyFeature
-from flagscale.models.pi0.configuration_pi0 import PI0Config
-from flagscale.models.utils.constants import (
+from flagos_robo.models.configs.types import PipelineFeatureType, PolicyFeature
+from flagos_robo.models.pi0.configuration_pi0 import PI0Config
+from flagos_robo.models.utils.constants import (
     POLICY_POSTPROCESSOR_DEFAULT_NAME,
     POLICY_PREPROCESSOR_DEFAULT_NAME,
 )
-from flagscale.train.processor import (
+from flagos_robo.train.processor import (
     AddBatchDimensionProcessorStep,
     ComplementaryDataProcessorStep,
     DeviceProcessorStep,
@@ -39,7 +39,7 @@ from flagscale.train.processor import (
     TokenizerProcessorStep,
     UnnormalizerProcessorStep,
 )
-from flagscale.train.processor.converters import (
+from flagos_robo.train.processor.converters import (
     policy_action_to_transition,
     transition_to_policy_action,
 )

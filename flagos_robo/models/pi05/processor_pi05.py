@@ -23,15 +23,15 @@ from typing import Any
 import numpy as np
 import torch
 
-from flagscale.models.configs.types import PipelineFeatureType, PolicyFeature
-from flagscale.models.pi05.configuration_pi05 import PI05Config
-from flagscale.models.pi05.modeling_pi05 import pad_vector
-from flagscale.models.utils.constants import (
+from flagos_robo.models.configs.types import PipelineFeatureType, PolicyFeature
+from flagos_robo.models.pi05.configuration_pi05 import PI05Config
+from flagos_robo.models.pi05.modeling_pi05 import pad_vector
+from flagos_robo.models.utils.constants import (
     OBS_STATE,
     POLICY_POSTPROCESSOR_DEFAULT_NAME,
     POLICY_PREPROCESSOR_DEFAULT_NAME,
 )
-from flagscale.train.processor import (
+from flagos_robo.train.processor import (
     AddBatchDimensionProcessorStep,
     DeviceProcessorStep,
     NormalizerProcessorStep,
@@ -43,11 +43,11 @@ from flagscale.train.processor import (
     TokenizerProcessorStep,
     UnnormalizerProcessorStep,
 )
-from flagscale.train.processor.converters import (
+from flagos_robo.train.processor.converters import (
     policy_action_to_transition,
     transition_to_policy_action,
 )
-from flagscale.train.processor.core import EnvTransition, TransitionKey
+from flagos_robo.train.processor.core import EnvTransition, TransitionKey
 
 
 @ProcessorStepRegistry.register(name="pi05_prepare_state_tokenizer_processor_step")

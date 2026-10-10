@@ -23,13 +23,13 @@ from transformers.feature_extraction_utils import BatchFeature
 if TYPE_CHECKING:
     from omegaconf import DictConfig
 
-from flagscale.models.utils.constants import ACTION
-from flagscale.models.vla.action_model.flow_matching_head.cross_attention_dit import DiT
-from flagscale.models.vla.action_model.flow_matching_head.encoding_utils import (
+from flagos_robo.models.utils.constants import ACTION
+from flagos_robo.models.vla.action_model.flow_matching_head.cross_attention_dit import DiT
+from flagos_robo.models.vla.action_model.flow_matching_head.encoding_utils import (
     SinusoidalPositionalEncoding,
     swish,
 )
-from flagscale.models.vla.registry import register_action_model
+from flagos_robo.models.vla.registry import register_action_model
 
 
 @dataclass

@@ -41,13 +41,13 @@ import torch
 from safetensors.torch import save_file
 from torch import Tensor
 
-from flagscale.models.utils.constants import (
+from flagos_robo.models.utils.constants import (
     SAFETENSORS_FILE,
     resolve_pretrained_dir,
 )
-from flagscale.models.vla.base_policy import TrainablePolicy
-from flagscale.models.vla.gr00t_n1_5.configuration_gr00t_n1_5 import Gr00tN15Config
-from flagscale.models.vla.gr00t_n1_5.gr00t_n1 import GR00TN15, GR00TN15Config
+from flagos_robo.models.vla.base_policy import TrainablePolicy
+from flagos_robo.models.vla.gr00t_n1_5.configuration_gr00t_n1_5 import Gr00tN15Config
+from flagos_robo.models.vla.gr00t_n1_5.gr00t_n1 import GR00TN15, GR00TN15Config
 
 GR00T_CONFIG_DIR = "gr00t_config"
 

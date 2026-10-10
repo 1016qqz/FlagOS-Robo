@@ -29,11 +29,11 @@ from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 if TYPE_CHECKING:
     import builtins
 
-from flagscale.models.configs.types import FeatureType, PolicyFeature
-from flagscale.models.utils.constants import ACTION, OBS_STATE, resolve_pretrained_dir
+from flagos_robo.models.configs.types import FeatureType, PolicyFeature
+from flagos_robo.models.utils.constants import ACTION, OBS_STATE, resolve_pretrained_dir
 
 if TYPE_CHECKING:
-    from flagscale.train.train_config import TrainConfig
+    from flagos_robo.train.train_config import TrainConfig
 
 T = TypeVar("T", bound="PreTrainedConfig")
 logger = getLogger(__name__)
