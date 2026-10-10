@@ -14,7 +14,7 @@ second path is invisible to static analysis, so ``check_import_closure.py``
 reports it as the single ``opaque`` reference and moves on. Whatever guarantees
 it holds have to come from an executed test instead.
 
-Two guarantees matter after the FlagScale -> FlagOS-Robo rename:
+Three guarantees matter after the FlagScale -> FlagOS-Robo rename:
 
 1. A pipeline saved by *this* package reloads. The save side writes
    ``cls.__module__``, so the rename changed the string that lands in the JSON;
@@ -23,28 +23,41 @@ Two guarantees matter after the FlagScale -> FlagOS-Robo rename:
    ``flagscale.*`` paths that no longer exist. An ``ImportError`` naming the
    stale module is the correct outcome -- silently substituting a different
    class would corrupt training data with no symptom.
+3. A multi-stage config instantiates *every* stage. One stage resolving and
+   the rest being dropped would look like success to a shape-only check.
+
+Note on the config format: the plan document called for a "minimal pipeline
+YAML" fed to ``build_pipeline``. Neither exists -- the configuration format is
+the JSON written by ``save_pretrained``, and the entry point is
+``from_pretrained``. These tests use the real pair.
 """
 
+import importlib
+import inspect
 import json
-from pathlib import Path
 
 import pytest
 
+from flagos_robo.train.processor import pipeline as pipeline_mod
 from flagos_robo.train.processor.pipeline import (
     DataProcessorPipeline,
     IdentityProcessorStep,
     ProcessorStepRegistry,
 )
 
-# The only in-repo ProcessorStep subclass without a registry name, hence the
-# only one whose round-trip goes through the dynamic-import path.
+# The only instantiable in-repo ProcessorStep subclass without a registry
+# name, hence the only one whose round-trip goes through dynamic import.
 UNREGISTERED_STEP = IdentityProcessorStep
+
+
+def _save(tmp_path, steps, name="p"):
+    DataProcessorPipeline(steps=steps, name=name).save_pretrained(tmp_path)
+    return json.loads((tmp_path / f"{name}.json").read_text())
 
 
 class TestSavedPathTracksTheRename:
     def test_save_writes_the_flagos_robo_module_path(self, tmp_path):
-        DataProcessorPipeline(steps=[UNREGISTERED_STEP()], name="p").save_pretrained(tmp_path)
-        entry = json.loads((tmp_path / "p.json").read_text())["steps"][0]
+        entry = _save(tmp_path, [UNREGISTERED_STEP()])["steps"][0]
 
         assert "registry_name" not in entry, (
             f"{UNREGISTERED_STEP.__name__} gained a registry name; this test no "
@@ -58,31 +71,61 @@ class TestSavedPathTracksTheRename:
         assert "flagscale" not in entry["class"]
 
     def test_round_trip_reconstructs_the_same_class(self, tmp_path):
-        DataProcessorPipeline(steps=[UNREGISTERED_STEP()], name="p").save_pretrained(tmp_path)
+        _save(tmp_path, [UNREGISTERED_STEP()])
         back = DataProcessorPipeline.from_pretrained(tmp_path, config_filename="p.json")
         assert type(back.steps[0]) is UNREGISTERED_STEP
 
     def test_the_saved_path_is_actually_importable(self, tmp_path):
         """Asserting the string starts with ``flagos_robo.`` is not enough --
         a path can be correctly prefixed and still point nowhere."""
-        import importlib
-
-        DataProcessorPipeline(steps=[UNREGISTERED_STEP()], name="p").save_pretrained(tmp_path)
-        full = json.loads((tmp_path / "p.json").read_text())["steps"][0]["class"]
+        full = _save(tmp_path, [UNREGISTERED_STEP()])["steps"][0]["class"]
         module_path, class_name = full.rsplit(".", 1)
         assert getattr(importlib.import_module(module_path), class_name) is UNREGISTERED_STEP
 
 
+class TestMultiStageConfigInstantiatesEveryStage:
+    """A config with several stages, spanning both resolution tiers and three
+    source modules. The failure this catches is partial construction: stage 0
+    resolves, the rest are silently dropped or collapsed into one type."""
+
+    STAGE_NAMES = [
+        "rename_observations_processor",
+        "to_batch_processor_observation",
+        "device_processor",
+    ]
+
+    def test_every_declared_stage_is_instantiated_in_order(self, tmp_path):
+        expected = [ProcessorStepRegistry.get(n) for n in self.STAGE_NAMES]
+        # Append the unregistered step so one stage goes through dynamic import
+        # and the rest through the registry, in a single config.
+        steps = [cls() for cls in expected] + [UNREGISTERED_STEP()]
+        cfg = _save(tmp_path, steps, name="multi")
+
+        assert len(cfg["steps"]) == 4
+        assert [s.get("registry_name") for s in cfg["steps"][:3]] == self.STAGE_NAMES
+        assert "class" in cfg["steps"][3], "the 4th stage must use the import tier"
+
+        back = DataProcessorPipeline.from_pretrained(tmp_path, config_filename="multi.json")
+        assert [type(s) for s in back.steps] == expected + [
+            UNREGISTERED_STEP
+        ], "reloaded stage types or their order do not match the saved config"
+
+    def test_the_stages_span_more_than_one_source_module(self):
+        """If every stage came from pipeline.py the test would not exercise
+        cross-module resolution, which is where the rename actually bit."""
+        modules = {ProcessorStepRegistry.get(n).__module__ for n in self.STAGE_NAMES}
+        assert len(modules) >= 3, modules
+        assert all(m.startswith("flagos_robo.train.processor.") for m in modules), modules
+
+
 class TestLegacyConfigsFailLoudly:
     @staticmethod
-    def _write(tmp_path, class_path):
-        (tmp_path / "legacy.json").write_text(
-            json.dumps({"name": "legacy", "steps": [{"class": class_path}]})
-        )
+    def _write(tmp_path, entry):
+        (tmp_path / "legacy.json").write_text(json.dumps({"name": "legacy", "steps": [entry]}))
 
     def test_flagscale_class_path_raises_import_error(self, tmp_path):
         stale = "flagscale.train.processor.pipeline.IdentityProcessorStep"
-        self._write(tmp_path, stale)
+        self._write(tmp_path, {"class": stale})
         with pytest.raises(ImportError) as exc:
             DataProcessorPipeline.from_pretrained(tmp_path, config_filename="legacy.json")
         assert "flagscale.train.processor.pipeline" in str(exc.value), (
@@ -93,28 +136,28 @@ class TestLegacyConfigsFailLoudly:
     def test_unknown_registry_name_also_raises_import_error(self, tmp_path):
         """The registry tier converts KeyError to ImportError; a caller that
         only catches ImportError must still see registry failures."""
-        (tmp_path / "legacy.json").write_text(
-            json.dumps({"name": "legacy", "steps": [{"registry_name": "no_such_step_xyz"}]})
-        )
+        self._write(tmp_path, {"registry_name": "no_such_step_xyz"})
+        with pytest.raises(ImportError):
+            DataProcessorPipeline.from_pretrained(tmp_path, config_filename="legacy.json")
+
+    def test_a_real_module_with_a_missing_class_also_raises(self, tmp_path):
+        """AttributeError is caught and re-raised as ImportError, so a config
+        naming a class that was deleted during migration fails the same way."""
+        self._write(tmp_path, {"class": "flagos_robo.train.processor.pipeline.NoSuchStepClass"})
         with pytest.raises(ImportError):
             DataProcessorPipeline.from_pretrained(tmp_path, config_filename="legacy.json")
 
 
 class TestRegisteredStepsBypassTheDynamicImport:
-    def test_registered_steps_are_saved_by_name_not_module_path(self, tmp_path):
+    def test_registered_steps_carry_their_registry_name(self):
         """This is why only one step is exposed to the rename: every other
         in-repo step is registered, and registry names are rename-proof."""
         name = next(iter(ProcessorStepRegistry.list()))
-        step = ProcessorStepRegistry.get(name)
-        assert getattr(step, "_registry_name", None) == name
+        assert getattr(ProcessorStepRegistry.get(name), "_registry_name", None) == name
 
     def test_every_in_repo_step_except_the_known_one_is_registered(self):
         """Guards against a future unregistered step quietly acquiring a
         rename-fragile saved path."""
-        import inspect
-
-        from flagos_robo.train.processor import pipeline as pipeline_mod
-
         # Abstract bases (ObservationProcessorStep and the other eight
         # ProcessorStep+ABC mixins) are excluded: they cannot be instantiated,
         # so they never reach a saved config and the rename cannot bite them.
