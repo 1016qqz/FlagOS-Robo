@@ -12,4 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# W2-W3 placeholder (plan 1.4-B2): serve/processor/ (18+102+69 LOC)
+from .image_layout_processor import ImageLayoutProcessorStep
+from .image_resize_processor import ImageResizeProcessorStep
+
+__all__ = ["ImageLayoutProcessorStep", "ImageResizeProcessorStep"]
