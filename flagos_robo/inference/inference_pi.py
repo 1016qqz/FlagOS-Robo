@@ -20,16 +20,16 @@ from omegaconf import DictConfig, OmegaConf
 from PIL import Image
 from torchvision import transforms
 
-from flagscale.models.configs.types import FeatureType, NormalizationMode, PolicyFeature
-from flagscale.models.pi0.configuration_pi0 import PI0Config
-from flagscale.models.pi0.modeling_pi0 import PI0Policy
-from flagscale.models.pi05.configuration_pi05 import PI05Config
-from flagscale.models.pi05.modeling_pi05 import PI05Policy
-from flagscale.models.utils.constants import ACTION, OBS_STATE
-from flagscale.platforms import get_platform  # noqa: F401 must be before model imports
-from flagscale.runner.utils import logger
-from flagscale.train.processor.pipeline import get_device_override
-from flagscale.train.train_pi import make_pre_post_processors
+from flagos_robo.models.configs.types import FeatureType, NormalizationMode, PolicyFeature
+from flagos_robo.models.pi0.configuration_pi0 import PI0Config
+from flagos_robo.models.pi0.modeling_pi0 import PI0Policy
+from flagos_robo.models.pi05.configuration_pi05 import PI05Config
+from flagos_robo.models.pi05.modeling_pi05 import PI05Policy
+from flagos_robo.models.utils.constants import ACTION, OBS_STATE
+from flagos_robo.platforms import get_platform  # noqa: F401 must be before model imports
+from flagos_robo.logger import logger
+from flagos_robo.train.processor.pipeline import get_device_override
+from flagos_robo.train.train_pi import make_pre_post_processors
 
 
 def load_image(image_path: str) -> torch.Tensor:

@@ -17,9 +17,9 @@ from typing import Any
 import torch
 from torch import nn
 
-from flagscale.runner.utils import logger
-from flagscale.transformations.hook import ModelHook, ModuleHookRegistry
-from flagscale.transformations.transformation import Transformation
+from flagos_robo.logger import logger
+from flagos_robo.transformations.hook import ModelHook, ModuleHookRegistry
+from flagos_robo.transformations.transformation import Transformation
 
 
 def _shape_of(x: torch.Tensor, name: str = "N/A") -> str:

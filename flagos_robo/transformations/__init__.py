@@ -29,20 +29,39 @@ __all__ = ["create_transformations_from_config"]
 
 
 def _get_transformation_registry() -> dict[str, type[Transformation]]:
-    """Get the transformation registry with lazy imports to avoid circular dependencies."""
-    if "TimestepTrackerTransformation" not in _TRANSFORMATION_REGISTRY:
-        from flagscale.inference.core.diffusion.timestep_tracker_transformation import (
-            TimestepTrackerTransformation,
-        )
+    """Get the transformation registry with lazy imports to avoid circular dependencies.
 
-        _TRANSFORMATION_REGISTRY["TimestepTrackerTransformation"] = TimestepTrackerTransformation
+    The two diffusion transformations below live under
+    ``flagos_robo.inference.core.diffusion``, which is NOT part of the robotics
+    migration: it serves FlagScale's diffusion image/video inference engine and
+    has no robot policy consumer.  Upstream imported them unguarded, which would
+    make every call to this function raise ModuleNotFoundError here.  They are
+    kept registered-on-demand and wrapped in try/except instead, so a config that
+    does not name them works, and a config that does name them gets the normal
+    "Unknown transformation class" KeyError from
+    :func:`create_transformations_from_config` listing what is actually available.
+    """
+    if "TimestepTrackerTransformation" not in _TRANSFORMATION_REGISTRY:
+        try:
+            from flagos_robo.inference.core.diffusion.timestep_tracker_transformation import (
+                TimestepTrackerTransformation,
+            )
+        except ImportError:
+            pass
+        else:
+            _TRANSFORMATION_REGISTRY[
+                "TimestepTrackerTransformation"
+            ] = TimestepTrackerTransformation
 
     if "TaylorSeerTransformation" not in _TRANSFORMATION_REGISTRY:
-        from flagscale.inference.core.diffusion.taylorseer_transformation import (
-            TaylorSeerTransformation,
-        )
-
-        _TRANSFORMATION_REGISTRY["TaylorSeerTransformation"] = TaylorSeerTransformation
+        try:
+            from flagos_robo.inference.core.diffusion.taylorseer_transformation import (
+                TaylorSeerTransformation,
+            )
+        except ImportError:
+            pass
+        else:
+            _TRANSFORMATION_REGISTRY["TaylorSeerTransformation"] = TaylorSeerTransformation
 
     return _TRANSFORMATION_REGISTRY
 

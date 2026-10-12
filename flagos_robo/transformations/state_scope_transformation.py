@@ -16,10 +16,23 @@ from typing import Any
 
 import torch.nn as nn
 
-from flagscale.inference.runtime_context import current_ctx
-from flagscale.runner.utils import logger
-from flagscale.transformations.hook import ModelHook, ModuleHookRegistry
-from flagscale.transformations.transformation import Transformation
+from flagos_robo.logger import logger
+
+try:
+    # `runtime_context` belongs to FlagScale's diffusion inference engine and is
+    # not part of the robotics migration -- nothing under flagos_robo/ opens a
+    # runtime context.  Upstream imported it unguarded, so merely importing this
+    # module would fail here.  Degrade instead: with no context provider the
+    # hooks below take their existing `if ctx:`-false branch, i.e. they become
+    # no-ops rather than errors, and the transformation stays constructible.
+    from flagos_robo.inference.runtime_context import current_ctx
+except ImportError:
+
+    def current_ctx():  # type: ignore[misc]
+        """No runtime-context provider is migrated; there is never a context."""
+        return None
+from flagos_robo.transformations.hook import ModelHook, ModuleHookRegistry
+from flagos_robo.transformations.transformation import Transformation
 
 
 # TODO(yupu): should always applied last

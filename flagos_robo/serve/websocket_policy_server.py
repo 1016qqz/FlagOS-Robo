@@ -26,7 +26,7 @@ import websockets.frames
 from websockets.http11 import Request, Response
 
 from . import msgpack_numpy
-from flagscale.logger import logger
+from flagos_robo.logger import logger
 
 
 @runtime_checkable

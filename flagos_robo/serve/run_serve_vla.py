@@ -22,15 +22,15 @@ import numpy as np
 import torch
 from omegaconf import DictConfig, ListConfig, OmegaConf
 
-import flagscale.serve.processor  # noqa: F401 — registers serve-specific processor steps
-from flagscale.logger import logger
-from flagscale.models.utils.constants import ACTION, OBS_IMAGES, OBS_STATE
-from flagscale.models.vla import TrainablePolicy
-from flagscale.serve.processor.image_layout_processor import ImageLayoutProcessorStep
-from flagscale.serve.processor.image_resize_processor import ImageResizeProcessorStep
-from flagscale.serve.websocket_policy_server import WebsocketPolicyServer
-from flagscale.train.processor import PolicyProcessorPipeline, ProcessorStepRegistry
-from flagscale.train.processor.pipeline import get_device_override
+import flagos_robo.serve.processor  # noqa: F401 — registers serve-specific processor steps
+from flagos_robo.logger import logger
+from flagos_robo.models.utils.constants import ACTION, OBS_IMAGES, OBS_STATE
+from flagos_robo.models.vla import TrainablePolicy
+from flagos_robo.serve.processor.image_layout_processor import ImageLayoutProcessorStep
+from flagos_robo.serve.processor.image_resize_processor import ImageResizeProcessorStep
+from flagos_robo.serve.websocket_policy_server import WebsocketPolicyServer
+from flagos_robo.train.processor import PolicyProcessorPipeline, ProcessorStepRegistry
+from flagos_robo.train.processor.pipeline import get_device_override
 
 # TODO: (yupu) to constant.py?
 TASK_KEY = "task"

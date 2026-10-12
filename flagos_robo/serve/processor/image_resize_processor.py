@@ -18,10 +18,10 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
-from flagscale.logger import logger
-from flagscale.models.configs.types import PipelineFeatureType, PolicyFeature
-from flagscale.models.utils.constants import OBS_IMAGES
-from flagscale.train.processor import ObservationProcessorStep, ProcessorStepRegistry
+from flagos_robo.logger import logger
+from flagos_robo.models.configs.types import PipelineFeatureType, PolicyFeature
+from flagos_robo.models.utils.constants import OBS_IMAGES
+from flagos_robo.train.processor import ObservationProcessorStep, ProcessorStepRegistry
 
 
 @dataclass

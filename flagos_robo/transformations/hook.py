@@ -23,7 +23,7 @@ from typing import Any, Optional
 import torch
 from torch import nn
 
-from flagscale.transformations.state_store import StateStore
+from flagos_robo.transformations.state_store import StateStore
 
 
 # Copied from
@@ -144,13 +144,13 @@ class ModuleHookRegistry:
         reg = ModuleHookRegistry.get_registry_if_present(module)
         if reg is None:
             reg = cls(module)
-            module._flagscale_hooks = reg
+            module._flagos_robo_hooks = reg
         return reg
 
     @classmethod
     def get_registry_if_present(cls, module: nn.Module) -> Optional["ModuleHookRegistry"]:
         """Return existing registry if present, without creating a new one."""
-        reg = vars(module).get("_flagscale_hooks")
+        reg = vars(module).get("_flagos_robo_hooks")
         return reg if isinstance(reg, ModuleHookRegistry) else None
 
     def register_hook(self, hook: ModelHook, name: str) -> None:
