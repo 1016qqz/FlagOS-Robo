@@ -75,6 +75,14 @@ flagscale.runner.backend.backend_native_train
 flagscale.runner.elastic.diagnostic
 flagscale.runner.elastic.log_collector
 flagscale.runner.elastic.monitor_service
+# Never an import target.  runner_train.py:299 and backend_native_train.py:100
+# build a *path* to this file and write `python <path>` into the generated
+# launch script, so the static scan can never see it.  It is reached whenever
+# experiment.runner.enable_monitoring is true.  Its own imports
+# (elastic.monitor_service, runner.utils) are already listed above, so pulling
+# it in closes the set rather than widening it.  Leaving it out would emit a
+# launch script pointing at a file that is not in the package.
+flagscale.runner.elastic.monitor_launcher
 =flagscale.runner.heartbeat
 flagscale.runner.heartbeat.config
 # Reached only through string module paths in heartbeat/config.py:136 and :163,
