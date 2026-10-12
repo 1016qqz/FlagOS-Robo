@@ -1,0 +1,28 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+- serve_id: vllm_model
+  engine_args:
+    host: 0.0.0.0
+    port: 5000
+    model_variant: "pi0.5"
+    model: /workspace/models/pi0_5_train/checkpoints/last/pretrained_model
+    device: "cuda"
+    # Maps client-sent observation keys to the keys the model was trained with.
+    # Format: {key_from_client: key_expected_by_model}
+    # rename_map:
+    #   "observation/image": "observation.images.image"
+    #   "observation/wrist_image": "observation.images.wrist_image"
+    #   "observation/state": "observation.state"
+    #   "prompt": "task"

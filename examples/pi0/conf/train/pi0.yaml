@@ -1,0 +1,62 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+system:
+  batch_size: 1
+  train_steps: 100000
+  log_freq: 10
+  grad_clip_norm: 1.0
+  use_amp: true
+  shuffle: false
+  num_workers: 4
+
+  checkpoint:
+    output_directory: ${experiment.exp_dir}
+    # Whether to save checkpoint
+    save_checkpoint: true
+    # Number of steps between checkpoints
+    save_freq: 1000
+  # TODO(yupu): Support resuming from checkpoint
+
+model:
+  model_name: pi0
+  # Path to the pretrained pi0_base model checkpoint
+  checkpoint_dir: /workspace/models/lerobot/pi0_base
+  # Path to paligemma tokenizer
+  tokenizer_path: /workspace/models/google/paligemma-3b-pt-224
+  tokenizer_max_length: 48
+
+  optimizer:
+    name: AdamW
+    lr: 2.5e-5
+    betas: [0.9, 0.95]
+    eps: 1.0e-8
+    weight_decay: 0.01
+    scheduler:
+      warmup_steps: 1000
+      decay_steps: 30000
+      decay_lr: 2.5e-6
+
+data:
+  # Path to the training data
+  data_path: /workspace/datasets/lerobot/aloha_mobile_cabinet
+  tolerance_s: 0.0001
+  use_imagenet_stats: true
+  # To match the input features naming from the dataset to the policy config
+  # For example, for the aloha_mobile_cabinet dataset, the rename_map is:
+  rename_map:
+    observation.images.cam_high: observation.images.base_0_rgb
+    observation.images.cam_left_wrist: observation.images.left_wrist_0_rgb
+    observation.images.cam_right_wrist: observation.images.right_wrist_0_rgb
+  use_quantiles: false
