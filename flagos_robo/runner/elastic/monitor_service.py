@@ -19,9 +19,9 @@ import sys
 import threading
 import time
 
-from flagscale.runner.elastic.diagnostic import generate_diagnostic_report
-from flagscale.runner.elastic.log_collector import collect_logs
-from flagscale.runner.utils import JobStatus, get_remote_file_mtime, logger
+from flagos_robo.runner.elastic.diagnostic import generate_diagnostic_report
+from flagos_robo.runner.elastic.log_collector import collect_logs
+from flagos_robo.runner.utils import JobStatus, get_remote_file_mtime, logger
 
 
 class MonitorService:

@@ -26,7 +26,7 @@ experiment:
   task:
     type: train
     backend: native
-    entrypoint: flagscale/train/train_gr00t_n1_5.py
+    entrypoint: flagos_robo/train/train_gr00t_n1_5.py
   runner:
     per_node_task: false
     no_shared_fs: false

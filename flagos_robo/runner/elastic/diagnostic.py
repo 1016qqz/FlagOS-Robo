@@ -15,7 +15,7 @@
 import os
 import time
 
-from flagscale.runner.utils import logger
+from flagos_robo.runner.utils import logger
 
 # Record the number of rows last diagnosed and analyzed by each host
 _diagnostic_offsets = {}

@@ -21,7 +21,7 @@ experiment:
   exp_dir: outputs/${experiment.exp_name}
   task:
     type: serve
-    entrypoint: flagscale/serve/run_serve_vla.py
+    entrypoint: flagos_robo/serve/run_serve_vla.py
   runner:
     hostfile: null
     deploy:

@@ -1,14 +1,14 @@
 # PI0: Training, Inference, and Serving
 
-This guide covers how to train, run inference, and serve PI0 models using FlagScale.
+This guide covers how to train, run inference, and serve PI0 models using FlagOS-Robo.
 
 ## Installation
 
 ### Clone Repository
 
 ```sh
-git clone https://github.com/FlagOpen/FlagScale.git
-cd FlagScale/
+git clone https://github.com/flagos-ai/FlagOS-Robo.git
+cd FlagOS-Robo/
 ```
 
 ### Setup Conda Environment
@@ -20,12 +20,14 @@ conda create -n flagos-robo python=3.12
 conda activate flagos-robo
 ```
 
-Install FlagScale and robotics dependencies:
+Install FlagOS-Robo and robotics dependencies:
 
 ```sh
-cd FlagScale/
-# replace "[cuda]" with "[ascend]" on Huawei Ascend, or "[musa]" on Moore Threads MUSA
-pip install ".[cuda]" --verbose
+cd FlagOS-Robo/
+# replace "cuda" with "ascend" on Huawei Ascend, or "musa" on Moore Threads MUSA
+pip install -r requirements/cuda/base.txt
+pip install -r requirements/cuda/train.txt   # training only
+pip install -e .
 
 pip install git+https://github.com/huggingface/transformers.git@fix/lerobot_openpi
 ```
@@ -47,7 +49,7 @@ Download models and tokenizers using the provided script. Choose either HuggingF
 **Using HuggingFace Hub:**
 
 ```sh
-cd FlagScale/
+cd FlagOS-Robo/
 python examples/pi0/download.py \
     --repo_id lerobot/pi0_base \
     --output_dir /workspace/models \
@@ -62,7 +64,7 @@ python examples/pi0/download.py \
 **Using ModelScope:**
 
 ```sh
-cd FlagScale/
+cd FlagOS-Robo/
 python examples/pi0/download.py \
     --repo_id lerobot/pi0_base \
     --output_dir /workspace/models \
@@ -83,14 +85,14 @@ The models will be downloaded to (example with `/workspace/models`):
 
 ### Prepare Dataset
 
-FlagScale uses the **LeRobotDataset v3.0** format. For detailed information about the format structure, see the [LeRobotDataset v3.0 documentation](https://huggingface.co/docs/lerobot/en/lerobot-dataset-v3).
+FlagOS-Robo uses the **LeRobotDataset v3.0** format. For detailed information about the format structure, see the [LeRobotDataset v3.0 documentation](https://huggingface.co/docs/lerobot/en/lerobot-dataset-v3).
 
 For example, to download the `aloha_mobile_cabinet` dataset:
 
 **Using HuggingFace Hub:**
 
 ```sh
-cd FlagScale/
+cd FlagOS-Robo/
 python examples/pi0/download.py \
     --repo_id lerobot/aloha_mobile_cabinet \
     --output_dir /workspace/datasets \
@@ -101,7 +103,7 @@ python examples/pi0/download.py \
 **Using ModelScope:**
 
 ```sh
-cd FlagScale/
+cd FlagOS-Robo/
 python examples/pi0/download.py \
     --repo_id lerobot/aloha_mobile_cabinet \
     --output_dir /workspace/datasets \
@@ -114,7 +116,7 @@ The dataset will be downloaded to (example with `/workspace/datasets`):
 
 ### Edit Config
 
-FlagScale uses a two-level configuration system:
+FlagOS-Robo uses a two-level configuration system:
 
 1. **Experiment-level config** (`examples/pi0/conf/train.yaml`): Defines experiment settings, environment variables, and resource allocation
 2. **Task-level config** (`examples/pi0/conf/train/pi0.yaml`): Defines model, dataset, and training hyperparameters
@@ -124,7 +126,7 @@ FlagScale uses a two-level configuration system:
 Edit the experiment-level config for multi-GPU training:
 
 ```sh
-cd FlagScale/
+cd FlagOS-Robo/
 vim examples/pi0/conf/train.yaml
 ```
 
@@ -140,7 +142,7 @@ Configure the following fields:
 Edit the task-level config for model and training settings:
 
 ```sh
-cd FlagScale/
+cd FlagOS-Robo/
 vim examples/pi0/conf/train/pi0.yaml
 ```
 
@@ -182,10 +184,10 @@ Configure the following fields:
 
 ### Start Training
 ```sh
-cd FlagScale/
-flagscale train pi0 --config ./examples/pi0/conf/train.yaml
+cd FlagOS-Robo/
+flagos-robo train pi0 --config ./examples/pi0/conf/train.yaml
 # or
-flagscale train pi0 -c ./examples/pi0/conf/train.yaml
+flagos-robo train pi0 -c ./examples/pi0/conf/train.yaml
 ```
 
 Training logs are saved to `outputs/pi0_train/logs/host_0_localhost.output` by default.
@@ -194,18 +196,24 @@ Checkpoints are saved to `${experiment.exp_dir}/checkpoints` (default: `outputs/
 
 ### Stop Training
 ```sh
-cd FlagScale/
-flagscale train pi0 --stop
+cd FlagOS-Robo/
+flagos-robo train pi0 --stop
 ```
 
 ## Inference
+
+> **Not available yet.** The inference runner has not been migrated to
+> FlagOS-Robo, so `flagos-robo inference` does not exist in this repository
+> (`flagos_robo/inference/` is still a package stub). The configuration and the
+> input-preparation steps below are kept because they are already correct for
+> the upcoming port -- only the final command cannot be run yet.
 
 ### Prepare Inference Inputs
 
 You can extract inference inputs (images, state, task) from a dataset using the provided script:
 
 ```sh
-cd FlagScale/
+cd FlagOS-Robo/
 python examples/pi0/dump_dataset_inputs.py \
     --dataset_root /workspace/datasets/lerobot/aloha_mobile_cabinet \
     --output_dir ./inference_inputs \
@@ -240,7 +248,7 @@ python examples/pi0/dump_dataset_inputs.py \
 ### Edit Config
 
 ```sh
-cd FlagScale/
+cd FlagOS-Robo/
 vim examples/pi0/conf/inference/pi0.yaml
 ```
 
@@ -273,10 +281,10 @@ Configure the following fields:
 ### Run Inference
 
 ```sh
-cd FlagScale/
-flagscale inference pi0 --config ./examples/pi0/conf/inference.yaml
+cd FlagOS-Robo/
+flagos-robo inference pi0 --config ./examples/pi0/conf/inference.yaml
 # or
-flagscale inference pi0 -c ./examples/pi0/conf/inference.yaml
+flagos-robo inference pi0 -c ./examples/pi0/conf/inference.yaml
 ```
 
 Inference logs are saved to `outputs/pi0_inference/inference_logs/host_0_localhost.output` by default.
@@ -285,10 +293,15 @@ The predicted action tensor is printed to the console and saved in the log file.
 
 ## Serving
 
+> **Not available yet.** The serving runner has not been migrated to
+> FlagOS-Robo, so `flagos-robo serve` does not exist in this repository
+> (`flagos_robo/serve/` is still a package stub). The configuration reference
+> below is kept for the upcoming port -- only the commands cannot be run yet.
+
 ### Edit Config
 
 ```sh
-cd FlagScale/
+cd FlagOS-Robo/
 vim examples/pi0/conf/serve/pi0.yaml
 ```
 
@@ -314,10 +327,10 @@ Configure the following fields:
 ### Run Serving
 
 ```sh
-cd FlagScale/
-flagscale serve pi0 --config ./examples/pi0/conf/serve.yaml
+cd FlagOS-Robo/
+flagos-robo serve pi0 --config ./examples/pi0/conf/serve.yaml
 # or
-flagscale serve pi0 -c ./examples/pi0/conf/serve.yaml
+flagos-robo serve pi0 -c ./examples/pi0/conf/serve.yaml
 ```
 
 Serving logs are saved to `outputs/pi0_serve/logs/host_0_localhost.output` by default.
@@ -325,8 +338,8 @@ Serving logs are saved to `outputs/pi0_serve/logs/host_0_localhost.output` by de
 ### Stop Serving
 
 ```sh
-cd FlagScale/
-flagscale serve pi0 --stop
+cd FlagOS-Robo/
+flagos-robo serve pi0 --stop
 ```
 
 ### Test Server with Client
@@ -334,7 +347,7 @@ flagscale serve pi0 --stop
 The client should send images using keys that match the `images_keys` in the config. For example, if using the default config:
 
 ```sh
-cd FlagScale/
+cd FlagOS-Robo/
 python examples/pi0/client_pi0.py \
   --host 127.0.0.1 \
   --port 5000 \

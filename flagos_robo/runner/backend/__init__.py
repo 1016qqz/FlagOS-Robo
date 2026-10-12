@@ -12,24 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from flagscale.runner.backend.backend_base import BackendBase
-from flagscale.runner.backend.backend_llama_cpp import LlamaCppBackend
-from flagscale.runner.backend.backend_megatron import MegatronBackend
-from flagscale.runner.backend.backend_native_compress import NativeCompressBackend
-from flagscale.runner.backend.backend_native_serve import NativeServeBackend
-from flagscale.runner.backend.backend_native_train import NativeTrainBackend
-from flagscale.runner.backend.backend_sglang import SglangBackend
-from flagscale.runner.backend.backend_verl import VerlBackend
-from flagscale.runner.backend.backend_vllm import VllmBackend
+# FlagOS-Robo ships only the native training backend.  Upstream FlagScale
+# re-exported seven more here (MegatronBackend, LlamaCppBackend,
+# NativeCompressBackend, NativeServeBackend, SglangBackend, VerlBackend,
+# VllmBackend); those modules are outside this repo's scope, so importing
+# them would raise ModuleNotFoundError at package import time.
+from flagos_robo.runner.backend.backend_base import BackendBase
+from flagos_robo.runner.backend.backend_native_train import NativeTrainBackend
 
-__all__ = [
-    "BackendBase",
-    "LlamaCppBackend",
-    "MegatronBackend",
-    "NativeCompressBackend",
-    "NativeServeBackend",
-    "NativeTrainBackend",
-    "SglangBackend",
-    "VerlBackend",
-    "VllmBackend",
-]
+__all__ = ["BackendBase", "NativeTrainBackend"]

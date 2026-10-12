@@ -52,6 +52,46 @@ git rev-parse HEAD   # 必须等于 f8e9a62c499d526a6ffa47f533bcf342330b7326
 | `flagscale.runner.heartbeat.{gpu_health,monitor}` | 同名，`flagos_robo.runner.heartbeat.*` | W2–W3 | 296+495 LOC。只被 `config.py:136/163` 的字符串模块路径引用，改写时这两个字符串也要跟着改 |
 | `flagscale.runner.utils.logger` | `flagos_robo.logger` | W2–W3 | **合并**，`transformations` 内 2 处引用 |
 
+### 命令行入口：子集重写，不是搬运
+
+`flagos_robo/cli.py` 与 `flagos_robo/run.py` 两个文件**不在 `migration_scope.txt` 里**，
+因为它们不是逐字搬运的产物，而是按 FlagScale 对应文件重写出的子集。
+扫描工具（G1/G1'）用 `migration_scope.txt` 判断「某个源模块是否计划内」，
+把重写文件写进去会让它去 FlagScale 找一个不存在的对应物。
+
+| FlagScale 原件 | FlagOS-Robo | 关系 | 差异 |
+|---|---|---|---|
+| `flagscale/cli.py` 528 LOC | `flagos_robo/cli.py` | **子集重写** | 上游 9 个子命令（run/train/serve/inference/eval/pull/install/tune/version）只保留 `run` + `train`；`train` 去掉 `--tune`（上游指向未迁的调参链路）。typer app 名改 `flagos-robo`。 |
+| `flagscale/run.py` 211 LOC | `flagos_robo/run.py` | **子集重写** | 只保留 train 任务类型；`serve`/`inference`/`compress` 三个分支与 V1 旧架构分支删除。Hydra 装配、`resolve_config` 查找顺序、argv 伪装三处逐字保留，便于与上游对账。 |
+
+`pyproject.toml` 的 `[project.scripts]` 声明 `flagos-robo = "flagos_robo.cli:flagos_robo"`。
+改动这一段后必须重跑 `pip install -e . --no-deps --no-build-isolation`：
+editable 安装只让包源码实时生效，入口脚本是安装那一刻写进 `<env>/bin/` 的，
+改 `pyproject` 后不重装则 `which flagos-robo` 查不到。
+
+实跑验证（容器内，`robo_file/_ops/b7_dryrun.sh`）：
+
+```
+flagos-robo --version                  -> flagos-robo version 0.1.0.dev0
+flagos-robo train --help               -> {model} + -c/--config --stop --dryrun --test --query
+flagos-robo train pi0 --dryrun         -> resolve_config 命中 examples/pi0/conf/train.yaml
+                                          -> Hydra 装配，${experiment.exp_dir} 插值为
+                                             outputs/pi0_train
+                                          -> runner_train 生成
+                                             outputs/pi0_train/logs/scripts/host_0_localhost_run.sh
+                                             并在 dryrun 处停住
+```
+
+### 未迁子命令在 examples 里的处理
+
+`examples/*/README.md` 原文有 `flagscale inference` / `flagscale serve` / `flagscale eval robo`
+三类命令。这些链路（`flagos_robo/inference/`、`flagos_robo/serve/`）目前只有 `__init__.py` 占位，
+`eval` 模块根本不存在。改名后命令形如 `flagos-robo serve`，但该子命令在本仓并不存在。
+
+处理方式：保留配置与参数说明（它们是有效的参考资料），在章节开头加一段
+**Not available yet** 提示，点明命令尚不存在、对应模块仍是占位。共 6 处：
+`pi0`{Inference, Serving}、`pi0_5`{Inference, Serving, Evaluation}、`gr00t_n1_5`{Serving}。
+
 ### 特殊改写
 
 | 原引用 | 改写为 | 位置 | 批次 |

@@ -46,7 +46,7 @@ import json
 import os
 import sys
 
-# Add FlagScale root to sys.path
+# Add FlagOS-Robo root to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from pathlib import Path
@@ -55,7 +55,7 @@ import torch
 from PIL import Image
 from torchvision.transforms import ToPILImage
 
-from flagscale.train.datasets.lerobot_dataset import LeRobotDataset
+from flagos_robo.train.datasets.lerobot_dataset import LeRobotDataset
 
 
 def tensor_to_image(tensor: torch.Tensor) -> Image.Image:

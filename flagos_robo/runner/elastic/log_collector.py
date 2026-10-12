@@ -16,7 +16,7 @@ import glob
 import os
 import shlex
 
-from flagscale.runner.utils import get_remote_file_size, logger, run_local_command
+from flagos_robo.runner.utils import get_remote_file_size, logger, run_local_command
 
 _log_offsets = {}
 

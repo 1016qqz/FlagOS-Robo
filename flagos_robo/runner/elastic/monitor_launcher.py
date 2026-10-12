@@ -27,8 +27,8 @@ import time
 
 from omegaconf import OmegaConf
 
-from flagscale.runner.elastic.monitor_service import MonitorService
-from flagscale.runner.utils import JobStatus, logger
+from flagos_robo.runner.elastic.monitor_service import MonitorService
+from flagos_robo.runner.utils import JobStatus, logger
 
 
 class MonitorRunner:
@@ -61,7 +61,9 @@ class MonitorRunner:
 
 def main():
     """Monitor the main function of the service"""
-    parser = argparse.ArgumentParser(description="Start the FlagScale training monitoring service")
+    parser = argparse.ArgumentParser(
+        description="Start the FlagOS-Robo training monitoring service"
+    )
     parser.add_argument("--log-dir", required=True, help="Log directory path")
     parser.add_argument(
         "--pid-file", required=True, help="The path of the PID file for the training process"

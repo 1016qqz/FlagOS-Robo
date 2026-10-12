@@ -16,7 +16,7 @@ from abc import ABC, abstractmethod
 
 from omegaconf import DictConfig
 
-from flagscale.runner.utils import validate_serve_config
+from flagos_robo.runner.utils import validate_serve_config
 
 
 class BackendBase(ABC):

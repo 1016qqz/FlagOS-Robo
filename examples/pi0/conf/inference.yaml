@@ -23,7 +23,7 @@ experiment:
   task:
     type: inference
     backend: vllm # TODO: Remove this restriction
-    entrypoint: flagscale/inference/inference_pi.py
+    entrypoint: flagos_robo/inference/inference_pi.py
   runner:
     hostfile: null
   cmds:

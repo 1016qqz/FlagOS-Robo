@@ -1,14 +1,14 @@
 # GR00T N1.5: Training and Serving
 
-This guide covers how to train and serve GR00T N1.5 models using FlagScale.
+This guide covers how to train and serve GR00T N1.5 models using FlagOS-Robo.
 
 ## Installation
 
 ### Clone Repository
 
 ```sh
-git clone https://github.com/FlagOpen/FlagScale.git
-cd FlagScale/
+git clone https://github.com/flagos-ai/FlagOS-Robo.git
+cd FlagOS-Robo/
 ```
 
 ### Setup Conda Environment
@@ -16,16 +16,18 @@ cd FlagScale/
 Create a new conda environment for robotics training:
 
 ```sh
-conda create -n flagscale-robo python=3.12
-conda activate flagscale-robo
+conda create -n flagos-robo python=3.12
+conda activate flagos-robo
 ```
 
-Install FlagScale and robotics dependencies:
+Install FlagOS-Robo and robotics dependencies:
 
 ```sh
-cd FlagScale/
-# replace "[cuda-train]" with "[ascend-train]" on Huawei Ascend, or "[musa-train]" on Moore Threads MUSA
-pip install ".[cuda-train]" --verbose
+cd FlagOS-Robo/
+# replace "cuda" with "ascend" on Huawei Ascend, or "musa" on Moore Threads MUSA
+pip install -r requirements/cuda/base.txt
+pip install -r requirements/cuda/train.txt
+pip install -e .
 ```
 
 Install additional dependencies for downloading models/datasets:
@@ -45,7 +47,7 @@ Download the pretrained GR00T N1.5 model using the provided script. Choose eithe
 **Using HuggingFace Hub:**
 
 ```sh
-cd FlagScale/
+cd FlagOS-Robo/
 python examples/pi0/download.py \
     --repo_id nvidia/GR00T-N1.5-3B \
     --output_dir /workspace/models \
@@ -55,7 +57,7 @@ python examples/pi0/download.py \
 **Using ModelScope:**
 
 ```sh
-cd FlagScale/
+cd FlagOS-Robo/
 python examples/pi0/download.py \
     --repo_id nvidia/GR00T-N1.5-3B \
     --output_dir /workspace/models \
@@ -69,14 +71,14 @@ The model will be downloaded to (example with `/workspace/models`):
 
 ### Prepare Dataset
 
-FlagScale uses the **LeRobotDataset v3.0** format. For detailed information about the format structure, see the [LeRobotDataset v3.0 documentation](https://huggingface.co/docs/lerobot/en/lerobot-dataset-v3).
+FlagOS-Robo uses the **LeRobotDataset v3.0** format. For detailed information about the format structure, see the [LeRobotDataset v3.0 documentation](https://huggingface.co/docs/lerobot/en/lerobot-dataset-v3).
 
 For example, to download the `libero_goal_no_noops` dataset:
 
 **Using HuggingFace Hub:**
 
 ```sh
-cd FlagScale/
+cd FlagOS-Robo/
 python examples/pi0/download.py \
     --repo_id IPEC-COMMUNITY/libero_goal_no_noops_1.0.0_lerobot \
     --output_dir /workspace/datasets \
@@ -87,7 +89,7 @@ python examples/pi0/download.py \
 **Using ModelScope:**
 
 ```sh
-cd FlagScale/
+cd FlagOS-Robo/
 python examples/pi0/download.py \
     --repo_id IPEC-COMMUNITY/libero_goal_no_noops_1.0.0_lerobot \
     --output_dir /workspace/datasets \
@@ -100,7 +102,7 @@ The dataset will be downloaded to (example with `/workspace/datasets`):
 
 ### Edit Config
 
-FlagScale uses a two-level configuration system:
+FlagOS-Robo uses a two-level configuration system:
 
 1. **Experiment-level config** (`examples/gr00t_n1_5/conf/train.yaml`): Defines experiment settings, environment variables, and resource allocation
 2. **Task-level config** (`examples/gr00t_n1_5/conf/train/gr00t_n1_5.yaml`): Defines model, dataset, and training hyperparameters
@@ -110,7 +112,7 @@ FlagScale uses a two-level configuration system:
 Edit the experiment-level config for multi-GPU training:
 
 ```sh
-cd FlagScale/
+cd FlagOS-Robo/
 vim examples/gr00t_n1_5/conf/train.yaml
 ```
 
@@ -127,7 +129,7 @@ Configure the following fields:
 Edit the task-level config for model and training settings:
 
 ```sh
-cd FlagScale/
+cd FlagOS-Robo/
 vim examples/gr00t_n1_5/conf/train/gr00t_n1_5.yaml
 ```
 
@@ -172,10 +174,10 @@ Configure the following fields:
 ### Start Training
 
 ```sh
-cd FlagScale/
-flagscale train gr00t_n1_5 --config ./examples/gr00t_n1_5/conf/train.yaml
+cd FlagOS-Robo/
+flagos-robo train gr00t_n1_5 --config ./examples/gr00t_n1_5/conf/train.yaml
 # or
-flagscale train gr00t_n1_5 -c ./examples/gr00t_n1_5/conf/train.yaml
+flagos-robo train gr00t_n1_5 -c ./examples/gr00t_n1_5/conf/train.yaml
 ```
 
 Training logs are saved to `outputs/gr00t_n1_5_train/logs/host_0_localhost.output` by default.
@@ -185,16 +187,21 @@ Checkpoints are saved to `${experiment.exp_dir}/checkpoints` (default: `outputs/
 ### Stop Training
 
 ```sh
-cd FlagScale/
-flagscale train gr00t_n1_5 --stop
+cd FlagOS-Robo/
+flagos-robo train gr00t_n1_5 --stop
 ```
 
 ## Serving
 
+> **Not available yet.** The serving runner has not been migrated to
+> FlagOS-Robo, so `flagos-robo serve` does not exist in this repository
+> (`flagos_robo/serve/` is still a package stub). The configuration reference
+> below is kept for the upcoming port -- only the commands cannot be run yet.
+
 ### Edit Config
 
 ```sh
-cd FlagScale/
+cd FlagOS-Robo/
 vim examples/gr00t_n1_5/conf/serve/gr00t_n1_5.yaml
 ```
 
@@ -210,10 +217,10 @@ Configure the following fields:
 ### Run Serving
 
 ```sh
-cd FlagScale/
-flagscale serve gr00t_n1_5 --config ./examples/gr00t_n1_5/conf/serve.yaml
+cd FlagOS-Robo/
+flagos-robo serve gr00t_n1_5 --config ./examples/gr00t_n1_5/conf/serve.yaml
 # or
-flagscale serve gr00t_n1_5 -c ./examples/gr00t_n1_5/conf/serve.yaml
+flagos-robo serve gr00t_n1_5 -c ./examples/gr00t_n1_5/conf/serve.yaml
 ```
 
 Serving logs are saved to `outputs/gr00t_n1_5_serve/logs/host_0_localhost.output` by default.
@@ -221,6 +228,6 @@ Serving logs are saved to `outputs/gr00t_n1_5_serve/logs/host_0_localhost.output
 ### Stop Serving
 
 ```sh
-cd FlagScale/
-flagscale serve gr00t_n1_5 --stop
+cd FlagOS-Robo/
+flagos-robo serve gr00t_n1_5 --stop
 ```

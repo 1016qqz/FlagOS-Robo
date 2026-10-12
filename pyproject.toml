@@ -35,6 +35,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8.3.5", "pre-commit>=4.2.0", "ruff>=0.14.0"]
 
+[project.scripts]
+flagos-robo = "flagos_robo.cli:flagos_robo"
+
 [project.urls]
 Homepage = "https://github.com/flagos-ai/FlagOS-Robo"
 

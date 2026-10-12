@@ -28,7 +28,7 @@ from typing import Any, TextIO
 
 from .health_reader import HardwareHealthIndex, HardwareHealthReader
 
-logger = logging.getLogger("flagscale.heartbeat")
+logger = logging.getLogger("flagos_robo.heartbeat")
 
 
 class JsonlTailer:

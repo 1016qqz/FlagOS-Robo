@@ -33,7 +33,7 @@ from omegaconf import DictConfig, OmegaConf
 from omegaconf.listconfig import ListConfig
 from tqdm.asyncio import tqdm
 
-from flagscale.logger import logger
+from flagos_robo.logger import logger
 
 AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=6 * 60 * 60)
 
@@ -84,15 +84,15 @@ def setup_exp_dir(config):
 
 
 def get_pkg_dir():
-    """Return the root directory of the FlagScale package/repo.
+    """Return the root directory of the FlagOS-Robo package/repo.
 
-    Used to locate package-internal files (``flagscale/train/``, scripts, etc.)
-    in generated run scripts for PYTHONPATH, ``cd``, and script paths.
+    Used to locate package-internal files (``flagos_robo/train/``, scripts,
+    etc.) in generated run scripts for PYTHONPATH, ``cd``, and script paths.
 
-    Resolves to the parent of the ``flagscale/`` package directory, which
+    Resolves to the parent of the ``flagos_robo/`` package directory, which
     works both for development (repo root) and pip-installed layouts.
     """
-    # flagscale/runner/utils.py -> flagscale/runner/ -> flagscale/ -> repo root
+    # flagos_robo/runner/utils.py -> flagos_robo/runner/ -> flagos_robo/ -> repo root
     return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
@@ -1005,7 +1005,7 @@ async def benchmark(
     benchmark_duration = time.perf_counter() - benchmark_start_time
 
     ### import here to avoid dependency issue
-    from flagscale.serve.metric import calculate_metrics
+    from flagos_robo.serve.metric import calculate_metrics
 
     metrics, actual_output_lens = calculate_metrics(
         input_requests=input_requests,

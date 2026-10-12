@@ -29,7 +29,7 @@ from pathlib import Path
 from threading import Event
 from typing import Any
 
-logger = logging.getLogger("flagscale.heartbeat.gpu_health")
+logger = logging.getLogger("flagos_robo.heartbeat.gpu_health")
 
 QUERY_FIELDS = (
     "index",

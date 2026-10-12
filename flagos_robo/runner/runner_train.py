@@ -21,13 +21,13 @@ from datetime import datetime
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
-from flagscale.runner.elastic.monitor_service import MonitorService
-from flagscale.runner.heartbeat.config import (
+from flagos_robo.runner.elastic.monitor_service import MonitorService
+from flagos_robo.runner.heartbeat.config import (
     HeartbeatLaunchConfig,
     prepare_heartbeat_launch_config,
 )
-from flagscale.runner.runner_base_legacy import JobStatus, RunnerBase
-from flagscale.runner.utils import (
+from flagos_robo.runner.runner_base_legacy import JobStatus, RunnerBase
+from flagos_robo.runner.utils import (
     find_latest_stdout_log,
     flatten_dict_to_args,
     get_free_port,
@@ -51,25 +51,11 @@ from flagscale.runner.utils import (
 _MAX_CPU_COUNT = multiprocessing.cpu_count()
 
 
-def _get_args_megatron(config: DictConfig):
-    assert config.experiment.task.backend == "megatron", (
-        "This function only supports megatron backend."
-    )
-
-    # Convert the DictConfig to a regular dictionary
-    config_dict = OmegaConf.to_container(config, resolve=True)
-    config_dict = config_dict["train"]
-
-    new_config_dict = {}
-    new_config_dict.update(config_dict["system"])
-    new_config_dict.update(config_dict["model"])
-    new_config_dict.update(config_dict["data"])
-
-    ignore_keys = ["log_dir", "details_dir", "scripts_dir", "pids_dir", "straggler_dir"]
-    # Flatten the dictionary to a list of arguments
-    args = flatten_dict_to_args(new_config_dict, ignore_keys)
-
-    return args
+# Upstream FlagScale also had ``_get_args_megatron(config)`` here, which
+# flattened train.{system,model,data} into a long ``--key value`` argv for
+# Megatron's argparse.  FlagOS-Robo ships only the native backend, whose
+# entrypoints read Hydra's generated config.yaml instead (see
+# ``_get_args_native`` below), so that function had no reachable caller.
 
 
 def _get_args_native(config: DictConfig):
@@ -265,7 +251,11 @@ def _generate_run_script_train(
         get_pkg_dir() if pkg_dir is None else resolve_path(pkg_dir, "build_dir", raise_missing=True)
     )
     assert os.path.exists(pkg_dir), f"PKG_DIR {pkg_dir} does not exist."
-    megatron_dir = os.path.join(pkg_dir, "flagscale", "train")
+    # Upstream FlagScale also appended ``flagscale/train`` (which vendors a
+    # ``megatron/`` package) to PYTHONPATH so that the generated script could
+    # ``import megatron.*``.  FlagOS-Robo does not ship that package - the
+    # native train path has no Megatron dependency - so pkg_dir alone is what
+    # the script needs to import ``flagos_robo.*``.
     cmds_config = config.experiment.get("cmds", None)
     if cmds_config:
         before_start = cmds_config.get("before_start", "")
@@ -287,7 +277,7 @@ def _generate_run_script_train(
         f.write("\n")
         f.write(f"cd {pkg_dir}\n")
         f.write("\n")
-        f.write(f"export PYTHONPATH={pkg_dir}:{megatron_dir}:${{PYTHONPATH}}\n")
+        f.write(f"export PYTHONPATH={pkg_dir}:${{PYTHONPATH}}\n")
         f.write("\n")
         for line in heartbeat_config.shell_setup_lines(node_rank):
             f.write(f"{line}\n")
@@ -297,7 +287,7 @@ def _generate_run_script_train(
         f.write("\n")
         if enable_monitoring:
             monitor_launcher_path = os.path.join(
-                pkg_dir, "flagscale", "runner", "elastic", "monitor_launcher.py"
+                pkg_dir, "flagos_robo", "runner", "elastic", "monitor_launcher.py"
             )
             ssh_port = config.experiment.runner.get("ssh_port", 22)
             f.write("# Start monitoring service in background\n")
@@ -418,9 +408,7 @@ class SSHTrainRunner(RunnerBase):
 
     def _prepare(self):
         _update_config_train(self.config)
-        if self.config.experiment.task.backend == "megatron":
-            self.user_args = _get_args_megatron(self.config)
-        elif self.config.experiment.task.backend == "native":
+        if self.config.experiment.task.backend == "native":
             self.user_args = _get_args_native(self.config)
         else:
             raise ValueError(f"Unsupported backend: {self.config.experiment.task.backend}")
@@ -889,8 +877,15 @@ class CloudTrainRunner(RunnerBase):
         _update_config_train(self.config)
         self.rdzv_id = datetime.now().strftime("%Y%m%d_%H%M%S.%f")
         self.heartbeat_config = prepare_heartbeat_launch_config(self.config, self.rdzv_id)
-        if self.config.experiment.task.backend == "megatron":
-            self.user_args = _get_args_megatron(self.config)
+        # Upstream only assigned ``user_args`` under ``backend == "megatron"``,
+        # which left ``self.user_args`` unset on every other backend and made
+        # ``_run_each`` raise AttributeError at the shlex.join below.  The
+        # native backend is the only one FlagOS-Robo ships, so resolve it the
+        # same way SSHTrainRunner does.
+        if self.config.experiment.task.backend == "native":
+            self.user_args = _get_args_native(self.config)
+        else:
+            raise ValueError(f"Unsupported backend: {self.config.experiment.task.backend}")
         logger.info("\n************** configuration ***********")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
 

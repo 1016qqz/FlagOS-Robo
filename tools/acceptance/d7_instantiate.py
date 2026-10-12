@@ -238,6 +238,107 @@ def l2plus(classes, ckpt_dirs):
             traceback.print_exc()
 
 
+def l2plus_groot(classes, groot_base, cams=("base_0_rgb",)):
+    """L2+ for Gr00tN15: load_pretrained=True against the real snapshot.
+
+    Separate from l2plus() because GR00T does not take the
+    `Policy.from_pretrained(dir, config=cfg)` route -- weights come in through
+    the config flag, which makes gr00t_n1.py:711 call the HF
+    `super().from_pretrained` on base_model_path.
+
+    This level asserts VALUES, not just "no exception". Two probe tensors are
+    compared bit-for-bit against the safetensors shards, and the same probes
+    are read off a load_pretrained=False build to prove the comparison can
+    fail: without that second half, an all-random model would also report
+    "loaded" as long as nothing raised.
+
+    Note on the parameter count: the instance holds 2.414B while the shards
+    hold 2.724B. The whole 310,640,640 difference is one tensor,
+    backbone.eagle_model.language_model.lm_head.weight (2048 x 151680). GR00T
+    uses the VLM as a feature extractor and never projects to vocab, so no
+    lm_head is built, and gr00t_n1.py:163 additionally pops LLM layers past
+    select_layer. Both are upstream FlagScale behaviour -- diffing the whole
+    gr00t_n1_5 subtree against the source tree yields package-rename lines
+    only. So the gap is expected, and this check pins it down explicitly
+    rather than leaving the number unexplained.
+    """
+    import glob
+
+    import torch
+
+    label, cls_key = "gr00t_n1_5", "Gr00tN15"
+    if cls_key not in classes:
+        record("L2+", label, False, "class unavailable (L0 failed)")
+        return
+    shards = sorted(glob.glob(str(Path(groot_base) / "*.safetensors")))
+    if not shards:
+        RESULTS.append({"level": "L2+", "name": label, "ok": None,
+                        "detail": f"SKIP weights not on disk: {groot_base}"})
+        print(f"[L2+] SKIP {label} :: weights not on disk: {groot_base}", flush=True)
+        return
+    try:
+        from safetensors import safe_open
+
+        from flagos_robo.models.vla.gr00t_n1_5.configuration_gr00t_n1_5 import (
+            Gr00tN15Config,
+        )
+
+        def _build(load_pretrained):
+            cfg = Gr00tN15Config(
+                base_model_path=groot_base, load_pretrained=load_pretrained
+            )
+            cfg.device = "cpu"
+            inp, out = _features(cfg.max_state_dim, cfg.max_action_dim, list(cams))
+            cfg.input_features, cfg.output_features = inp, out
+            return classes[cls_key](cfg)
+
+        # One probe from each half of the model, so a backbone-only or
+        # action-head-only load would be caught.
+        probes = [
+            "action_head.model.transformer_blocks.0.attn1.to_q.weight",
+            "backbone.eagle_model.language_model.model.layers.0.self_attn.q_proj.weight",
+        ]
+        where = {}
+        for f in shards:
+            with safe_open(f, framework="pt") as s:
+                for k in s.keys():
+                    if k in probes:
+                        where[k] = f
+        missing = [p for p in probes if p not in where]
+        if missing:
+            record("L2+", label, False, f"probe tensors absent from shards: {missing}")
+            return
+
+        loaded = dict(_build(True).named_parameters())
+        random = dict(_build(False).named_parameters())
+        n_loaded = sum(p.numel() for p in loaded.values())
+
+        for p in probes:
+            key = "_groot_model." + p
+            if key not in loaded:
+                record("L2+", label, False, f"probe absent from model: {p}")
+                return
+            with safe_open(where[p], framework="pt") as s:
+                want_t = s.get_tensor(p)
+            got = loaded[key].detach().to(want_t.dtype)
+            rnd = random[key].detach().to(want_t.dtype)
+            if not torch.equal(got, want_t):
+                record("L2+", label, False, f"probe {p} does not match checkpoint")
+                return
+            if torch.equal(rnd, want_t):
+                record("L2+", label, False,
+                       f"probe {p} matches a random build too -- check is vacuous")
+                return
+
+        record("L2+", label, True,
+               f"Gr00tN15 load_pretrained=True({groot_base}) OK, "
+               f"{n_loaded / 1e9:.3f}B params, {len(probes)} probe tensors "
+               f"bit-identical to shards (and differ under random init)")
+    except Exception as e:
+        record("L2+", label, False, f"{type(e).__name__}: {e}")
+        traceback.print_exc()
+
+
 def main():
     ap = argparse.ArgumentParser()
     # examples/ is not migrated yet (it lands in batch B7), so L1 still reads the
@@ -267,6 +368,7 @@ def main():
         l2(classes, args.groot_base)
     if "L2+" in want:
         l2plus(classes, {"pi0": args.pi0_ckpt, "pi0.5": args.pi05_ckpt})
+        l2plus_groot(classes, args.groot_base)
 
     passed = sum(1 for r in RESULTS if r["ok"] is True)
     failed = sum(1 for r in RESULTS if r["ok"] is False)

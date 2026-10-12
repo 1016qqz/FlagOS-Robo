@@ -122,7 +122,11 @@ class HeartbeatLaunchConfig:
 
         qdir = shlex.quote(self.heartbeat_dir)
         lines = [
-            "# FlagScale GPU progress heartbeat",
+            # The FLAGSCALE_GPU_HEARTBEAT_* names below are deliberately NOT
+            # renamed: they are the wire protocol read by the progress
+            # publisher that lives in Megatron's training hooks, not in this
+            # repo.  Renaming them here would silently break the handshake.
+            "# FlagOS-Robo GPU progress heartbeat",
             f"mkdir -p {qdir}",
             "export FLAGSCALE_GPU_HEARTBEAT_ENABLE=1",
             f"export FLAGSCALE_GPU_HEARTBEAT_RUN_ID={shlex.quote(self.run_id)}",
@@ -133,7 +137,7 @@ class HeartbeatLaunchConfig:
             health_cmd = [
                 "python",
                 "-m",
-                "flagscale.runner.heartbeat.gpu_health",
+                "flagos_robo.runner.heartbeat.gpu_health",
                 "--output-file",
                 self.hardware_health_file(node_rank),
                 "--run-id",
@@ -149,7 +153,7 @@ class HeartbeatLaunchConfig:
             ]
             lines.extend(
                 [
-                    "# FlagScale low-frequency GPU hardware health",
+                    "# FlagOS-Robo low-frequency GPU hardware health",
                     f"rm -f {shlex.quote(self.hardware_health_file(node_rank))}",
                     f"nohup {shlex.join(health_cmd)} "
                     f">> {shlex.quote(self.hardware_health_log_file(node_rank))} 2>&1 &",
@@ -160,7 +164,7 @@ class HeartbeatLaunchConfig:
             monitor_cmd = [
                 "python",
                 "-m",
-                "flagscale.runner.heartbeat.monitor",
+                "flagos_robo.runner.heartbeat.monitor",
                 "--heartbeat-dir",
                 self.heartbeat_dir,
                 "--run-id",
@@ -271,13 +275,18 @@ def prepare_heartbeat_launch_config(config: DictConfig, run_id: str) -> Heartbea
             "GPU progress heartbeat currently requires a shared filesystem for cross-node "
             "monitoring; no_shared_fs=true is not supported yet"
         )
-    task = config.experiment.get("task", {})
-    backend = task.get("backend", "megatron") if hasattr(task, "get") else "megatron"
-    if str(backend).lower() != "megatron":
-        raise ValueError(
-            "GPU progress heartbeat currently supports the Megatron backend because it relies "
-            "on the common Megatron training-step hooks"
-        )
+    # Upstream gated this on ``experiment.task.backend`` because the publisher that
+    # writes the per-rank progress files lives in the training-step hooks of its
+    # vendored trainer, not in the runner.  FlagOS-Robo migrated the monitor and the
+    # hardware-health collectors but not that publisher, so the monitor would wait
+    # on files nobody writes.  The gate therefore no longer names a backend - it
+    # states the missing half outright.
+    raise NotImplementedError(
+        "GPU progress heartbeat is not available in FlagOS-Robo: the monitor and "
+        "hardware-health collectors were migrated, but the training-loop side that "
+        "publishes per-rank progress was not. Set "
+        "experiment.runner.heartbeat.enabled=false (or omit the section)."
+    )
     logging = config.train.system.logging
     heartbeat_dir = raw_dict.get("log_dir") or os.path.join(
         logging.log_dir, "heartbeat", str(run_id)
