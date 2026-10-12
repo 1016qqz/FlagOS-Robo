@@ -1,0 +1,72 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import pytest
+
+from flagscale.runner.utils import parse_hostfile
+
+
+@pytest.fixture
+def mock_os_path_isfile(mocker):
+    return mocker.patch("os.path.isfile", return_value=True)
+
+
+@pytest.fixture
+def mock_open(mocker):
+    return mocker.patch("builtins.open", mocker.mock_open())
+
+
+def test_parse_hostfile_non_existing_file(mocker):
+    mocker.patch("os.path.isfile", return_value=False)
+    result = parse_hostfile("/path/to/non_existing_hostfile.txt")
+    assert result is None
+
+
+def test_parse_hostfile_correctly_formatted(mock_os_path_isfile, mock_open):
+    hostfile_content = [
+        "worker0 slots=16 type=A100",
+        "worker1 slots=8 type=V100",
+        "worker2 slots=32",
+        "# comment line",
+        "worker3 slots=16 type=A100",
+        "# comment line",
+    ]
+    # expected_result = {
+    #     "worker0": {"slots": 16, "type": "A100"},
+    #     "worker1": {"slots": 8, "type": "V100"},
+    #     "worker2": {"slots": 32, "type": None},
+    #     "worker3": {"slots": 16, "type": "A100"},
+    # }
+
+    with pytest.raises(
+        AssertionError, match="All hosts must have the a machine type or no machine type specified."
+    ):
+        mock_open.return_value.readlines.return_value = hostfile_content
+        parse_hostfile("/path/to/hostfile.txt")
+
+
+def test_parse_hostfile_incorrectly_formatted(mock_os_path_isfile, mock_open):
+    hostfile_content = ["worker0 slots=16 type=A100", "invalid line", "# comment line"]
+
+    mock_open.return_value.readlines.return_value = hostfile_content
+    with pytest.raises(ValueError):
+        parse_hostfile("/path/to/hostfile.txt")
+
+
+def test_parse_hostfile_empty(mock_os_path_isfile, mock_open):
+    hostfile_content = ""
+
+    mock_open.return_value.readlines.return_value = hostfile_content
+    with pytest.raises(ValueError):
+        parse_hostfile("/path/to/hostfile.txt")
