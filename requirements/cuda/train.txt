@@ -24,3 +24,16 @@
 sentencepiece==0.2.1
 transformers==4.57.6
 tiktoken==0.12.0
+
+# accelerate: NOT optional despite its earlier placement in optional.txt.
+# flagos_robo/models/pi05/modeling_pi05.py:966 calls
+# `from accelerate import init_empty_weights` on the main from_pretrained
+# path, so PI05Policy.from_pretrained raises ModuleNotFoundError without it.
+# Version matches the pin it carried in optional.txt.
+accelerate==1.10.1
+# peft: required by the GR00T N1.5 Eagle2 backbone —
+# flagos_robo/models/vla/gr00t_n1_5/eagle2/modeling_eagle2_5_vl.py:12
+# imports LoraConfig/get_peft_model at module level, which Gr00tN15.__init__
+# reaches via EagleBackbone. Version matches upstream FlagScale's vendor
+# train.txt pins (ascend:24, musa:23, kunlunxin:19 all pin 0.18.1).
+peft==0.18.1

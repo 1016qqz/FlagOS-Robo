@@ -15,6 +15,8 @@
 # Optional accelerators / codecs. Installed on demand, never required for
 # `pip install -e .` or for the import smoke test.
 
-accelerate==1.10.1
+# accelerate moved to cuda/train.txt: modeling_pi05.py:966 needs it on the
+# main from_pretrained path, so it does not meet this file's "never required"
+# criterion.
 flash-attn==2.8.0.post2
 torchcodec==0.8.0
