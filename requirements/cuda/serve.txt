@@ -1,0 +1,37 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Policy-serving dependencies for flagos_robo/serve.
+#
+# Derived from FlagScale requirements/cuda/serve.txt @ baseline f8e9a62c, but
+# only the two pins the migrated serve code actually imports. Upstream's
+# serve.txt also carries vllm, ray, gymnasium, dm-tree, websocket-client and
+# websocket; none of those appear in an import statement under
+# flagos_robo/serve (checked with an AST scan of the subtree, which reports
+# exactly: PIL, msgpack, numpy, omegaconf, torch, websockets). The vllm wheel
+# in particular is an LLM-inference dependency with no robotics policy-serving
+# role, so it is deliberately not carried over.
+
+-r ./base.txt
+
+# websockets: flagos_robo/serve/websocket_policy_server.py:24-25 imports
+# `websockets.asyncio.server` and `websockets.frames`. The asyncio.server
+# submodule is the v12+ API, so a floor matters here; version matches
+# upstream FlagScale's pin.
+websockets==15.0.1
+# msgpack: flagos_robo/serve/msgpack_numpy.py:34 -- the wire codec for policy
+# requests/responses. Upstream pins 1.1.0; 1.1.2 is the version the H800
+# container (conda env flagscale-train, python 3.12.0) runs, which is where
+# this serve path was exercised, so the pin follows the verified environment.
+msgpack==1.1.2

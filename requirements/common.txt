@@ -42,6 +42,29 @@ scipy==1.14.1
 pandas==2.2.3
 matplotlib==3.9.4
 
+# Transitive-but-imported deps.
+#
+# The five pins below are imported directly by migrated code, yet upstream
+# FlagScale never pins them anywhere in requirements/ -- they arrive as
+# transitive dependencies of transformers/datasets/torch, so their versions
+# are whatever the resolver happens to pick that day. Code that writes
+# `from PIL import Image` or `import safetensors` owns that dependency and
+# must pin it. Versions are taken from the H800 container these modules were
+# actually exercised in (conda env flagscale-train, python 3.12.0) rather
+# than from "latest", because that environment is the one with a green
+# 258-test run and a 12/12 model-instantiation run behind it.
+#
+#   pillow            serve/processor/image_*.py, inference/inference_pi.py (8 sites)
+#   huggingface-hub   models/{pi0,pi05,vla}/* checkpoint download (6 sites)
+#   safetensors       models/{pi0,pi05}/modeling_*.py weight load (7 sites)
+#   typing-extensions models/utils/protocols.py, train/processor (3 sites)
+#   packaging         version comparison in train/utils, models/vla (3 sites)
+pillow==12.0.0
+huggingface-hub==0.36.0
+safetensors==0.7.0
+typing-extensions==4.15.0
+packaging==25.0
+
 # Utilities
 tqdm==4.67.1
 requests==2.32.3

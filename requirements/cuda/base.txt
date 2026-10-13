@@ -25,8 +25,21 @@ torchaudio==2.9.0
 torchvision==0.24.0
 
 # for robotics
+# av (PyAV): flagos_robo/train/datasets/video_utils.py:29 imports it at module
+# level, so the train dataset path cannot load without it. It is the fallback
+# video decoder for platforms where torchcodec is unavailable
+# (video_utils.py:42-44). torchcodec stays in optional.txt because the code
+# degrades to pyav when it is missing; av has no such fallback.
+av==16.0.1
 datasets==4.5.0
 diffusers==0.36.0
+# dm-tree (imports as `tree`): flagos_robo/models/vla/gr00t_n1_5/gr00t_n1.py:42.
+# The import is guarded and there is a fallback at :674-682, but the two paths
+# are not equivalent -- tree.map_structure recurses into nested containers
+# while the fallback is a flat dict comprehension over BatchFeature.items().
+# Pinning it keeps the nested path available instead of silently taking the
+# flat one. Version matches upstream FlagScale requirements/cuda/serve.txt:23.
+dm-tree==0.1.9
 draccus==0.11.5
 einops==0.8.2
 epath==0.7
