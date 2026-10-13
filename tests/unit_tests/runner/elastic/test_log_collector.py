@@ -19,7 +19,7 @@ from unittest.mock import patch
 import pytest
 from omegaconf import OmegaConf
 
-from flagscale.runner.elastic.log_collector import _log_offsets, collect_logs
+from flagos_robo.runner.elastic.log_collector import _log_offsets, collect_logs
 
 
 class TestLogCollector:
@@ -60,14 +60,14 @@ class TestLogCollector:
 
         with (
             patch(
-                "flagscale.runner.elastic.log_collector.find_actual_log_file",
+                "flagos_robo.runner.elastic.log_collector.find_actual_log_file",
                 return_value=expected_src,
             ),
             patch("os.path.exists", return_value=True),
             patch("os.path.getsize", return_value=100),
             patch("os.makedirs"),
             patch(
-                "flagscale.runner.elastic.log_collector.run_local_command"
+                "flagos_robo.runner.elastic.log_collector.run_local_command"
             ) as mock_run_local_command,
         ):
             result = collect_logs(mock_config, "localhost", 0, "/tmp/dest", dryrun=False)
@@ -94,14 +94,14 @@ class TestLogCollector:
 
         with (
             patch(
-                "flagscale.runner.elastic.log_collector.find_actual_log_file",
+                "flagos_robo.runner.elastic.log_collector.find_actual_log_file",
                 return_value=expected_src,
             ),
             patch("os.path.exists", return_value=True),
             patch("os.path.getsize", return_value=200),
             patch("os.makedirs"),
             patch(
-                "flagscale.runner.elastic.log_collector.run_local_command"
+                "flagos_robo.runner.elastic.log_collector.run_local_command"
             ) as mock_run_local_command,
         ):
             collect_logs(mock_config, "localhost", 0, "/tmp/dest", dryrun=False)
@@ -119,14 +119,14 @@ class TestLogCollector:
 
         with (
             patch(
-                "flagscale.runner.elastic.log_collector.find_actual_log_file",
+                "flagos_robo.runner.elastic.log_collector.find_actual_log_file",
                 return_value=expected_src,
             ),
             patch("os.path.exists", return_value=True),
             patch("os.path.getsize", return_value=100),
             patch("os.makedirs"),
             patch(
-                "flagscale.runner.elastic.log_collector.run_local_command"
+                "flagos_robo.runner.elastic.log_collector.run_local_command"
             ) as mock_run_local_command,
         ):
             collect_logs(mock_config_no_shared_fs, "localhost", 0, "/tmp/dest", dryrun=False)
@@ -137,14 +137,14 @@ class TestLogCollector:
         """Test that logs file is not found"""
         with (
             patch(
-                "flagscale.runner.elastic.log_collector.find_actual_log_file",
+                "flagos_robo.runner.elastic.log_collector.find_actual_log_file",
                 return_value="/tmp/test_logs/host_0_localhost.output",
             ),
             patch("os.path.exists", return_value=False),
             patch("os.makedirs"),
             patch("os.remove"),
-            patch("flagscale.runner.elastic.log_collector.run_local_command"),
-            patch("flagscale.runner.elastic.log_collector.logger") as mock_logger,
+            patch("flagos_robo.runner.elastic.log_collector.run_local_command"),
+            patch("flagos_robo.runner.elastic.log_collector.logger") as mock_logger,
         ):
             result = collect_logs(mock_config, "localhost", 0, "/tmp/dest", dryrun=False)
 
@@ -155,15 +155,15 @@ class TestLogCollector:
         """Test that logs file is empty"""
         with (
             patch(
-                "flagscale.runner.elastic.log_collector.find_actual_log_file",
+                "flagos_robo.runner.elastic.log_collector.find_actual_log_file",
                 return_value="/tmp/test_logs/host_0_localhost.output",
             ),
             patch("os.path.exists", return_value=True),
             patch("os.path.getsize", return_value=0),
             patch("os.makedirs"),
             patch("os.remove"),
-            patch("flagscale.runner.elastic.log_collector.run_local_command"),
-            patch("flagscale.runner.elastic.log_collector.logger") as mock_logger,
+            patch("flagos_robo.runner.elastic.log_collector.run_local_command"),
+            patch("flagos_robo.runner.elastic.log_collector.logger") as mock_logger,
         ):
             result = collect_logs(mock_config, "localhost", 0, "/tmp/dest", dryrun=False)
 
@@ -174,7 +174,7 @@ class TestLogCollector:
         """Test that collect logs with dryrun mode"""
         with (
             patch(
-                "flagscale.runner.elastic.log_collector.find_actual_log_file",
+                "flagos_robo.runner.elastic.log_collector.find_actual_log_file",
                 return_value="/tmp/test_logs/host_0_localhost.output",
             ),
             patch("os.path.exists", return_value=True),
@@ -182,7 +182,7 @@ class TestLogCollector:
             patch("os.makedirs"),
             patch("os.remove"),
             patch(
-                "flagscale.runner.elastic.log_collector.run_local_command"
+                "flagos_robo.runner.elastic.log_collector.run_local_command"
             ) as mock_run_local_command,
         ):
             collect_logs(mock_config, "localhost", 0, "/tmp/dest", dryrun=True)
@@ -200,7 +200,7 @@ class TestLogCollector:
         """Test that collect logs with exception handling"""
         with (
             patch(
-                "flagscale.runner.elastic.log_collector.find_actual_log_file",
+                "flagos_robo.runner.elastic.log_collector.find_actual_log_file",
                 return_value="/tmp/test_logs/host_0_localhost.output",
             ),
             patch("os.path.exists", return_value=True),
@@ -208,10 +208,10 @@ class TestLogCollector:
             patch("os.makedirs"),
             patch("os.remove"),
             patch(
-                "flagscale.runner.elastic.log_collector.run_local_command",
+                "flagos_robo.runner.elastic.log_collector.run_local_command",
                 side_effect=Exception("Test error"),
             ),
-            patch("flagscale.runner.elastic.log_collector.logger") as mock_logger,
+            patch("flagos_robo.runner.elastic.log_collector.logger") as mock_logger,
         ):
             result = collect_logs(mock_config, "localhost", 0, "/tmp/dest", dryrun=False)
 
@@ -224,13 +224,13 @@ class TestLogCollector:
 
         with (
             patch(
-                "flagscale.runner.elastic.log_collector.find_actual_log_file",
+                "flagos_robo.runner.elastic.log_collector.find_actual_log_file",
                 return_value="/tmp/test_logs/host_0_localhost.output",
             ),
             patch("os.path.exists", return_value=True),
             patch("os.path.getsize", return_value=100),
             patch("os.makedirs"),
-            patch("flagscale.runner.elastic.log_collector.run_local_command"),
+            patch("flagos_robo.runner.elastic.log_collector.run_local_command"),
         ):
             collect_logs(mock_config, "localhost", 0, "/tmp/dest", dryrun=False)
             assert _log_offsets["localhost_0"] == 100
@@ -245,7 +245,7 @@ class TestLogCollector:
 
         with (
             patch(
-                "flagscale.runner.elastic.log_collector.find_actual_log_file",
+                "flagos_robo.runner.elastic.log_collector.find_actual_log_file",
                 return_value="/tmp/test_logs/host_0_localhost.output",
             ),
             patch("os.path.exists", return_value=False),

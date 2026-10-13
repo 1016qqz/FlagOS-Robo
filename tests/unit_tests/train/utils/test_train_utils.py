@@ -28,7 +28,7 @@ from torch.distributed._composable.fsdp import fully_shard
 
 from tests.unit_tests.test_utilities import Utils as TestUtils
 
-from flagscale.models.utils.constants import (
+from flagos_robo.models.utils.constants import (
     CHECKPOINTS_DIR,
     LAST_CHECKPOINT_LINK,
     OPTIMIZER_PARAM_GROUPS,
@@ -40,7 +40,7 @@ from flagscale.models.utils.constants import (
     TRAINING_STATE_DIR,
     TRAINING_STEP,
 )
-from flagscale.train.utils.train_utils import (
+from flagos_robo.train.utils.train_utils import (
     get_step_checkpoint_dir,
     get_step_identifier,
     load_scheduler_state,

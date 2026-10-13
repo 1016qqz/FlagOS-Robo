@@ -22,7 +22,7 @@ import pytest
 torch = pytest.importorskip("torch")
 dist = pytest.importorskip("torch.distributed")
 
-from flagscale.train.perf_monitor.hooks import (
+from flagos_robo.train.perf_monitor.hooks import (
     initialize_perf_monitor,
     perf_monitor_end_iteration,
     perf_monitor_end_training,

@@ -19,7 +19,7 @@ from unittest.mock import patch
 import pytest
 from omegaconf import OmegaConf
 
-from flagscale.runner.backend.backend_native_train import NativeTrainBackend
+from flagos_robo.runner.backend.backend_native_train import NativeTrainBackend
 
 
 @pytest.fixture
@@ -35,7 +35,7 @@ def mock_config():
             "task": {
                 "type": "train",
                 "backend": "native_train",
-                "entrypoint": "flagscale/train/train_pi.py",
+                "entrypoint": "flagos_robo/train/train_pi.py",
             },
             "runner": {
                 "hostfile": None,
@@ -73,7 +73,7 @@ def mock_config():
 @pytest.fixture
 def mock_get_args_native():
     """Mock _get_args_native function."""
-    with patch("flagscale.runner.backend.backend_native_train._get_args_native") as mock:
+    with patch("flagos_robo.runner.backend.backend_native_train._get_args_native") as mock:
         mock.return_value = ["--config-file=/tmp/test_config.yaml"]
         yield mock
 
@@ -81,14 +81,14 @@ def mock_get_args_native():
 @pytest.fixture
 def mock_update_config_train():
     """Mock _update_config_train function."""
-    with patch("flagscale.runner.backend.backend_native_train._update_config_train") as mock:
+    with patch("flagos_robo.runner.backend.backend_native_train._update_config_train") as mock:
         yield mock
 
 
 @pytest.fixture
 def mock_parse_hostfile():
     """Mock parse_hostfile function."""
-    with patch("flagscale.runner.backend.backend_native_train.parse_hostfile") as mock:
+    with patch("flagos_robo.runner.backend.backend_native_train.parse_hostfile") as mock:
         mock.return_value = None
         yield mock
 
@@ -96,7 +96,7 @@ def mock_parse_hostfile():
 @pytest.fixture
 def mock_logger():
     """Mock logger to avoid output during tests."""
-    with patch("flagscale.runner.backend.backend_native_train.logger") as mock:
+    with patch("flagos_robo.runner.backend.backend_native_train.logger") as mock:
         yield mock
 
 
@@ -107,7 +107,7 @@ def test_backend_init_success(
     backend = NativeTrainBackend(mock_config)
 
     assert backend.task_type == "train"
-    assert backend.user_script == "flagscale/train/train_pi.py"
+    assert backend.user_script == "flagos_robo/train/train_pi.py"
     assert backend.user_envs == {"CUDA_VISIBLE_DEVICES": "0,1,2,3"}
     assert backend.user_args == ["--config-file=/tmp/test_config.yaml"]
     assert backend.resources is None
@@ -129,7 +129,7 @@ def test_backend_init_wrong_task_type(mock_config, mock_get_args_native, mock_up
 def test_backend_prepare_with_hostfile(mock_config, mock_get_args_native, mock_update_config_train):
     """Test _prepare with hostfile."""
     mock_resources = {"host1": {"slots": 8, "type": "gpu"}}
-    with patch("flagscale.runner.backend.backend_native_train.parse_hostfile") as mock_parse:
+    with patch("flagos_robo.runner.backend.backend_native_train.parse_hostfile") as mock_parse:
         mock_parse.return_value = mock_resources
         backend = NativeTrainBackend(mock_config)
         assert backend.resources == mock_resources

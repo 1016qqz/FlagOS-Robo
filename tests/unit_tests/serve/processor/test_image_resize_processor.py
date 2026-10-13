@@ -15,7 +15,7 @@
 import numpy as np
 import pytest
 
-from flagscale.serve.processor.image_resize_processor import ImageResizeProcessorStep
+from flagos_robo.serve.processor.image_resize_processor import ImageResizeProcessorStep
 
 
 @pytest.fixture
@@ -67,14 +67,26 @@ def test_skips_non_ndarray(step):
 
 
 def test_warns_on_wrong_ndim(step, caplog):
+    """A 2-D image is passed through untouched, with a warning.
+
+    The logger name is read off the package logger rather than written as a
+    literal.  Upstream hardcoded ``"FlagScale"``; this port renames the logger
+    to ``"FlagOS-Robo"``, and a stale literal here does not fail loudly -- the
+    warning still goes to stdout, ``caplog`` just attaches to a logger nothing
+    writes to and ``caplog.text`` comes back empty.  Deriving the name keeps the
+    test honest through any future rename.
+    """
     import logging
 
-    fs_logger = logging.getLogger("FlagScale")
+    from flagos_robo.logger import logger as package_logger
+
+    logger_name = package_logger.logger.name
+    fs_logger = logging.getLogger(logger_name)
     fs_logger.propagate = True
     try:
         img = np.random.randint(0, 255, (480, 640), dtype=np.uint8)
         obs = _make_obs(image=img)
-        with caplog.at_level(logging.WARNING, logger="FlagScale"):
+        with caplog.at_level(logging.WARNING, logger=logger_name):
             result = step.observation(obs)
         assert result["observation.images.image"].shape == (480, 640)
         assert "ndim=2" in caplog.text

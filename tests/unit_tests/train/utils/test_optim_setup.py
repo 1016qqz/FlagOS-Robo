@@ -20,7 +20,7 @@ from unittest.mock import MagicMock, patch
 import torch
 import torch.nn as nn
 
-from flagscale.train.utils.optim_setup import (
+from flagos_robo.train.utils.optim_setup import (
     apply_freeze_config,
     build_optim_param_groups,
     freeze_and_get_trainable_params,
@@ -358,7 +358,7 @@ class TestUnusedPatternWarnings(unittest.TestCase):
     def setUp(self):
         self.model = SimpleModel()
 
-    @patch("flagscale.train.utils.optim_setup.logger")
+    @patch("flagos_robo.train.utils.optim_setup.logger")
     def test_warns_on_unused_freeze_pattern(self, mock_logger):
         """Should warn when freeze pattern matches nothing."""
         list(
@@ -373,7 +373,7 @@ class TestUnusedPatternWarnings(unittest.TestCase):
         warning_call = mock_logger.warning.call_args[0][0]
         self.assertIn("Freeze patterns matched nothing", warning_call)
 
-    @patch("flagscale.train.utils.optim_setup.logger")
+    @patch("flagos_robo.train.utils.optim_setup.logger")
     def test_warns_on_unused_keep_pattern(self, mock_logger):
         """Should warn when keep pattern matches nothing."""
         list(
@@ -418,7 +418,7 @@ class TestParameterCounts(unittest.TestCase):
     def setUp(self):
         self.model = SimpleModel()
 
-    @patch("flagscale.train.utils.optim_setup.logger")
+    @patch("flagos_robo.train.utils.optim_setup.logger")
     def test_parameter_count_logging(self, mock_logger):
         """Verify correct parameter counts are logged."""
         # Count total params
@@ -526,7 +526,7 @@ class TestBuildOptimParamGroups(unittest.TestCase):
             "Encoder group should not exist when all params are frozen",
         )
 
-    @patch("flagscale.train.utils.optim_setup.logger")
+    @patch("flagos_robo.train.utils.optim_setup.logger")
     def test_warns_on_nonexistent_module(self, mock_logger):
         """Should warn when module doesn't exist."""
         config = {"nonexistent": {"lr": 1e-5}}
@@ -760,7 +760,7 @@ class TestFreezeRequiresGradPreservation(unittest.TestCase):
     def setUp(self):
         self.model = SimpleModel()
 
-    @patch("flagscale.train.utils.optim_setup.logger")
+    @patch("flagos_robo.train.utils.optim_setup.logger")
     def test_no_freeze_patterns_preserves_requires_grad(self, mock_logger):
         """Params with requires_grad=False should stay frozen when no freeze patterns provided."""
         for name, param in self.model.named_parameters():
@@ -785,7 +785,7 @@ class TestFreezeRequiresGradPreservation(unittest.TestCase):
         total_count = sum(1 for _ in self.model.parameters())
         self.assertEqual(len(params), total_count - encoder_count)
 
-    @patch("flagscale.train.utils.optim_setup.logger")
+    @patch("flagos_robo.train.utils.optim_setup.logger")
     def test_freeze_patterns_forces_unmatched_trainable(self, mock_logger):
         """Params not matching freeze patterns become trainable even if originally frozen."""
         for param in self.model.parameters():
@@ -811,7 +811,7 @@ class TestFreezeRequiresGradPreservation(unittest.TestCase):
         total_count = sum(1 for _ in self.model.parameters())
         self.assertEqual(len(params), total_count - encoder_count)
 
-    @patch("flagscale.train.utils.optim_setup.logger")
+    @patch("flagos_robo.train.utils.optim_setup.logger")
     def test_warns_when_unfreezing_previously_frozen(self, mock_logger):
         """Should warn about params that were frozen but are being made trainable."""
         for name, param in self.model.named_parameters():
@@ -845,7 +845,7 @@ class TestBuildOptimParamGroupsOverlap(unittest.TestCase):
     def setUp(self):
         self.model = NestedModel()
 
-    @patch("flagscale.train.utils.optim_setup.logger")
+    @patch("flagos_robo.train.utils.optim_setup.logger")
     def test_parent_child_overlap_dedup(self, mock_logger):
         """Parent module listed before child: child group gets skipped."""
         config = {
@@ -865,7 +865,7 @@ class TestBuildOptimParamGroupsOverlap(unittest.TestCase):
         overlap_warnings = [w for w in warning_calls if "already assigned" in w]
         self.assertGreater(len(overlap_warnings), 0)
 
-    @patch("flagscale.train.utils.optim_setup.logger")
+    @patch("flagos_robo.train.utils.optim_setup.logger")
     def test_child_parent_overlap_partial(self, mock_logger):
         """Child module listed before parent: parent group excludes child's params."""
         config = {

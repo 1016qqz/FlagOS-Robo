@@ -17,7 +17,7 @@ import os
 import pytest
 from omegaconf import OmegaConf
 
-from flagscale.runner.utils import (
+from flagos_robo.runner.utils import (
     get_cwd_dir,
     get_pkg_dir,
     resolve_path,
@@ -56,26 +56,26 @@ class TestResolvePath:
         assert os.path.isabs(resolve_path("relative"))
 
     def test_check_exists_warns_on_missing(self, mocker):
-        mock_warn = mocker.patch("flagscale.runner.utils.logger.warning")
+        mock_warn = mocker.patch("flagos_robo.runner.utils.logger.warning")
         resolve_path("/nonexistent/path/xyzzy", config_key="test.key", check_exists=True)
         mock_warn.assert_called_once()
         assert "test.key" in mock_warn.call_args[0][0]
         assert "/nonexistent/path/xyzzy" in mock_warn.call_args[0][0]
 
     def test_check_exists_no_warning_for_existing(self, tmp_path, mocker):
-        mock_warn = mocker.patch("flagscale.runner.utils.logger.warning")
+        mock_warn = mocker.patch("flagos_robo.runner.utils.logger.warning")
         existing = tmp_path / "real_file.txt"
         existing.write_text("hello")
         resolve_path(str(existing), config_key="test.key", check_exists=True)
         mock_warn.assert_not_called()
 
     def test_check_exists_false_does_not_warn_on_missing(self, mocker):
-        mock_warn = mocker.patch("flagscale.runner.utils.logger.warning")
+        mock_warn = mocker.patch("flagos_robo.runner.utils.logger.warning")
         resolve_path("/nonexistent/path/xyzzy", config_key="test.key", check_exists=False)
         mock_warn.assert_not_called()
 
     def test_default_config_key_is_empty(self, mocker):
-        mock_warn = mocker.patch("flagscale.runner.utils.logger.warning")
+        mock_warn = mocker.patch("flagos_robo.runner.utils.logger.warning")
         resolve_path("/nonexistent/abc", check_exists=True)
         assert "Config ''" in mock_warn.call_args[0][0]
 
@@ -148,13 +148,13 @@ class TestGetPkgDir:
     def test_returns_absolute_path(self):
         assert os.path.isabs(get_pkg_dir())
 
-    def test_points_to_parent_of_flagscale_package(self):
+    def test_points_to_parent_of_flagos_robo_package(self):
         pkg_dir = get_pkg_dir()
-        assert os.path.isdir(os.path.join(pkg_dir, "flagscale"))
+        assert os.path.isdir(os.path.join(pkg_dir, "flagos_robo"))
 
     def test_is_stable_regardless_of_cwd(self, monkeypatch, tmp_path):
         monkeypatch.chdir(tmp_path)
-        assert os.path.isdir(os.path.join(get_pkg_dir(), "flagscale"))
+        assert os.path.isdir(os.path.join(get_pkg_dir(), "flagos_robo"))
 
 
 # ---------------------------------------------------------------------------

@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from flagscale.runner.elastic.diagnostic import error_types, generate_diagnostic_report
+from flagos_robo.runner.elastic.diagnostic import error_types, generate_diagnostic_report
 
 
 class TestDiagnostic:
@@ -139,7 +139,7 @@ class TestDiagnostic:
         finally:
             os.unlink(temp_path)
 
-    @patch("flagscale.runner.elastic.diagnostic.logger")
+    @patch("flagos_robo.runner.elastic.diagnostic.logger")
     def test_generate_diagnostic_report_read_error(self, mock_logger, mock_config):
         """Test diagnostic report generation with file read error"""
         with patch("builtins.open", side_effect=PermissionError("Access denied")):

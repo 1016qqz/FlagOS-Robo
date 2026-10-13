@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from flagscale.runner.heartbeat.gpu_health import parse_nvidia_smi_csv
+from flagos_robo.runner.heartbeat.gpu_health import parse_nvidia_smi_csv
 
 
 def _row(

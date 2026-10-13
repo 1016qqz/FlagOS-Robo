@@ -14,7 +14,7 @@
 
 import pytest
 
-from flagscale.runner.utils import parse_hostfile
+from flagos_robo.runner.utils import parse_hostfile
 
 
 @pytest.fixture

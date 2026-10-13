@@ -14,7 +14,7 @@
 
 import unittest
 
-from flagscale.transformations.state_store import StateStore
+from flagos_robo.transformations.state_store import StateStore
 
 
 class DummyState:
