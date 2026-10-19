@@ -36,7 +36,10 @@ experiment:
     before_start: echo "Starting PI0 Training"
   envs:
     LOGLEVEL: "INFO"
-    CUDA_VISIBLE_DEVICES: "0,1,2,3"
+    # GPU0/1 host a long-running vLLM service that pre-allocates ~94% of their
+    # memory, so requesting them fails at startup with OOM rather than with a
+    # readable "GPU unavailable". Restricted to the six cards that are free.
+    CUDA_VISIBLE_DEVICES: "2,3,4,5,6,7"
     CUDA_DEVICE_MAX_CONNECTIONS: 1
     WANDB_MODE: offline
     OTEL_SDK_DISABLED: true

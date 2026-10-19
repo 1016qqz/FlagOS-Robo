@@ -60,6 +60,7 @@ from flagos_robo.models.vla.base_policy import TrainablePolicy
 from flagos_robo.models.vla.pretrained_config import PreTrainedConfig
 import flagos_robo.models.vla.gr00t_n1_5.processor_gr00t  # noqa: F401  register GR00T processor steps
 from flagos_robo.platforms import get_platform
+from flagos_robo.utils.precision_dump import dump_dir_from_env, dump_step
 
 # Monkey-patch: transformers 4.57+ kernel-hub discovery can't find flash_attn on some platforms
 # (e.g. MUSA), but direct import works fine. Replace _lazy_imports so transformers uses flash_attn directly.
@@ -442,6 +443,11 @@ def main(config: TrainConfig, seed: int):
     world_size = dist.get_world_size()
     is_main_process = rank == 0
 
+    # Resolved once per run, not per step. None => instrumentation inert.
+    precision_dump_dir = dump_dir_from_env()
+    if precision_dump_dir is not None and is_main_process:
+        logger.info(f"Precision dump enabled -> {precision_dump_dir}")
+
     dataset = make_dataset(config, policy_config)
     dist.barrier()
 
@@ -592,6 +598,25 @@ def main(config: TrainConfig, seed: int):
 
         step += 1
         train_tracker.step()
+
+        # Precision-alignment dump (off unless FLAGOS_PRECISION_DUMP is set).
+        # Placed here deliberately: after `step += 1` so the recorded step
+        # matches the number the log line prints, and BEFORE the log block
+        # below, whose reset_averages() zeroes every meter's .val -- dumping
+        # after it would record loss=0.0 on exactly the log_freq steps.
+        # `.val` not the attribute itself: MetricsTracker.__getattr__ returns
+        # the AverageMeter, and to_dict() would hand back the window average.
+        if precision_dump_dir is not None:
+            dump_step(
+                precision_dump_dir,
+                step,
+                loss=float(train_tracker.loss.val),
+                rank=rank,
+                extra={
+                    "grad_norm": float(train_tracker.grad_norm.val),
+                    "lr": float(train_tracker.lr.val),
+                },
+            )
 
         # Update epoch counter for sampler.set_epoch() when we've processed one epoch worth of samples
         if samples_per_epoch > 0 and step % samples_per_epoch == 0:
