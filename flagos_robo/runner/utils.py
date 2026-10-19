@@ -14,6 +14,7 @@
 
 import asyncio
 import collections
+import ipaddress
 import json
 import os
 import re
@@ -308,21 +309,42 @@ def get_host_name_or_ip():
     return IP
 
 
+def _is_loopback(ip):
+    """判断字符串地址是否落在回环段。
+
+    不要用 `ip.startswith("127.0.0.1")` —— Debian 系 `gethostbyname(getfqdn())`
+    常返回 `127.0.1.1`，字面前缀匹配抓不到，但它同属 127.0.0.0/8。
+    stdlib `ipaddress` 覆盖整个回环段（IPv4 127.0.0.0/8 与 IPv6 ::1）。
+    传入非法地址时按「非回环」处理，交由调用方继续判断。
+    """
+    try:
+        return ipaddress.ip_address(ip).is_loopback
+    except ValueError:
+        return False
+
+
 def get_addr():
+    # 本地修复（偏离上游 baseline f8e9a62c，见 docs/MIGRATION_MAP.md §五）：
+    # 上游此处为 `if not ip.startswith == "127.0.0.1"`，比较的是 bound method
+    # 对象与 str，恒为 False，`not False` 恒 True —— 两段回环过滤完全失效，
+    # 会把 127.0.0.1 当作对外地址返回。改为 `_is_loopback()` 真判回环段。
+    # 同时把裸 `except:` 收窄为 OSError：socket.error 即 OSError 别名，
+    # gethostbyname 抛的 socket.gaierror 也是 OSError 子类，覆盖面不变，
+    # 但不再吞掉 KeyboardInterrupt / SystemExit 等非 Exception 异常。
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.connect(("8.8.8.8", 80))
             ip = s.getsockname()[0]
-            if not ip.startswith == "127.0.0.1":
+            if not _is_loopback(ip):
                 return ip
-    except:
+    except OSError:
         pass
 
     try:
         ip = socket.gethostbyname(socket.getfqdn())
-        if not ip.startswith == "127.0.0.1":
+        if not _is_loopback(ip):
             return ip
-    except:
+    except OSError:
         pass
 
     return socket.gethostname()
@@ -652,10 +674,14 @@ def is_master_node(lws_leader_address):
 
 def get_ip_addr():
     """Get ip address."""
+    # 本地修复（偏离上游 baseline f8e9a62c，见 docs/MIGRATION_MAP.md §五）：
+    # 裸 `except:` 收窄为 OSError。gethostname/gethostbyname 的失败模式都是
+    # OSError 子类（socket.gaierror / socket.herror），覆盖面不变；
+    # 回落值 "127.0.0.1" 保持原语义不动 —— is_master():704 依赖它。
     try:
         hostname = socket.gethostname()
         ip = socket.gethostbyname(socket.getfqdn(hostname))
-    except:
+    except OSError:
         ip = "127.0.0.1"
     return ip
 

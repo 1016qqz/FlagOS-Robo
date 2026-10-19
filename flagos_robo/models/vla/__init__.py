@@ -32,12 +32,18 @@ from .utils import get_vlm_config
 # QwenGr00t / Qwen{,25,3}VLBackbone here is gone along with them, and so are
 # their four entries in __all__ -- a name left in __all__ with nothing bound
 # to it makes `from ... import *` raise AttributeError.
-
-try:
-    from flagos_robo.models.pi0.modeling_pi0 import PI0Policy
-    from flagos_robo.models.pi05.modeling_pi05 import PI05Policy
-except ImportError:
-    pass
+#
+# PI0Policy / PI05Policy are not re-exported here either, for the same reason
+# plus one more. Upstream guarded them in a try/except ImportError and still
+# listed them in __all__, which is exactly the AttributeError pattern the
+# paragraph above warns about. The guard could not be kept with the names
+# merely dropped from __all__, because the import is itself circular:
+# pi0.modeling_pi0 imports back into this package (vla.base_policy, and
+# pi0.configuration_pi0 imports vla.pretrained_config), so pulling pi0 in from
+# vla/__init__.py re-enters a package that is still initialising. Nothing needs
+# the re-export -- train/train_pi.py and inference/inference_pi.py both import
+# PI0Policy / PI05Policy straight from flagos_robo.models.pi0 and .pi05 -- so
+# the whole block is gone.
 
 __all__ = [
     "TrainablePolicy",
@@ -49,6 +55,4 @@ __all__ = [
     "build_action_model",
     "get_vlm_config",
     "Gr00tN15",
-    "PI0Policy",
-    "PI05Policy",
 ]
