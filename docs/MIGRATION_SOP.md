@@ -169,6 +169,79 @@ error: planned entry(ies) name a module that does not exist in ../FlagScale (typ
 | stale `--cut` guard | 切断声明已过期，却继续吸收同名的新泄漏 |
 | dead-entry guard | 范围条目拼错或过时，单向检查看不见 |
 
+### 2.2 闭包门禁管不到的两类缺陷：G5 / G6
+
+§2.1 的三道拒跑检查修的都是**范围声明**本身。但闭包工具还有一类管不到的东西：
+它扫的是**源树**（`--source-root ../FlagScale`），判定的是"该不该迁"；
+迁完之后**本仓里到底能不能 import**，它一个字都没说。
+
+W2-W3 结束后实测撞出两个真实缺陷，都在三道绿灯下安然通过：
+
+| 缺陷 | 实测症状 | 闭包门禁为何看不见 |
+|---|---|---|
+| D1 内部模块漏搬 | `runner/heartbeat/monitor.py:29` `from .health_reader import ...`，而 `health_reader.py` 根本不在本仓 → `ModuleNotFoundError` | 它是**被字符串路径够到**的叶子（`config.py:136/:163`），G1 的 reached 集里压根没有它，而 C2 的发现结果不回灌 seed 集 |
+| D2 `__all__` 悬挂名 | `models/vla/__init__.py` 把 `PI0Policy/PI05Policy` 列进 `__all__`，绑定却只在 `try/except ImportError` 里 → `from pkg import *` 抛 `AttributeError` | 纯范围问题之外：模块都在计划集内，是**包内符号**对不上，闭包不检查符号 |
+
+对应两道新门禁，都在仓内 `tools/`，都带能真 fail 的 `--self-test`：
+
+```bash
+python3 tools/check_leaf_import.py .     # G5：逐模块真 import
+python3 tools/check_all_dangling.py .    # G6：纯 AST 查 __all__ 悬挂名
+```
+
+实测基线（必须可复现）：
+
+```
+G5  modules=129  OK 36  MISSING-INTERNAL 0  OTHER 0  MISSING-EXTERNAL 93(环境性)  RC=0
+G6  扫 169 个 .py  18 个定义 __all__  悬挂 0  CLEAN  RC=0
+```
+
+**两道门禁不可互相替代，因为覆盖面的决定因素不同 —— 这是实测出来的，不是设计意图：**
+
+G5 真 import，所以**缺第三方依赖会掩盖内部缺陷**。三组对照（移走 `health_reader.py`）：
+
+| 条件 | MISSING-INTERNAL | 结论 |
+|---|---|---|
+| 依赖齐 | **1**，精确点名 `monitor -> needs health_reader` | 抓到 |
+| 屏蔽 `omegaconf` | **0** | **被掩盖** |
+
+机制：`heartbeat/__init__.py:17` → `config.py:24` → `omegaconf`。缺 `omegaconf` 时，
+包 `__init__` 链在走到 `monitor.py:29` 之前就已失败，该模块被归入 `MISSING-EXTERNAL`，
+真正的内部缺失永远不会被报出来。本机 129 个模块只有 36 个可达 → **无依赖环境下 G5 只覆盖约 28%**。
+
+→ 所以 G5 的权威运行点是 `tests-gpu`（镜像内 torch 齐备，覆盖全量模块面）；
+  `tests-cpu` 里那一份只覆盖 CPU 可达子集，`ci.yml` 的注释里写明了这一点。
+→ G6 是纯 AST，不 import 任何东西，覆盖面与已装依赖**无关**（169 个文件全扫），
+  所以放在 `purity` 这种故意不装依赖的 job 里正合适。
+
+**通用教训（§2 那条的推论）**：任何「逐模块 import 探针」类检查器，其报告的缺陷数都是
+**依赖可用性的函数**，不是代码质量的绝对度量。读这类报告必须同时读 `OK / 总数` 比值；
+OK 占比低时，`MISSING-INTERNAL 0` 不构成"无内部缺失"的证据。
+
+#### G6 必须剪掉 `_ci/`（遍历型门禁的剪枝集属于正确性）
+
+本节 §4 的闭包检查要求把上游克隆到 `_ci/FlagScale` 当 `--source-root`。
+G6 扫的是整棵仓库根，所以 `_ci/` 一旦存在就会被一起扫进去 —— 实测会扫到
+170 个 `.py`（本仓真实 169）、`RC=1`，并点名
+`_ci/FlagScale/flagscale/models/vla/__init__.py`，**而本仓代码是干净的**。
+即「门禁在干净代码上报红」。这比漏报更糟：它会训练使用者忽略这道门禁。
+
+修复是在 `tools/check_all_dangling.py` 的模块级 `_PRUNE` 里加 `_ci`，
+并配一组**双向** self-test（`_ci/` 下种阳性必须 `RC=0`，换成未剪枝的
+`vendor_not_pruned/` 必须 `RC=1`）。只测剪枝那一侧不算证明 ——
+「剪枝生效」和「扫描器整体失灵」的输出完全一样。
+
+两道门禁在这件事上**不对称**，原因是扫描起点不同：
+
+| 门禁 | 扫描起点 | 会进 `_ci/` 吗 | 需要剪枝吗 |
+|---|---|---|---|
+| G5 `check_leaf_import.py` | `repo/flagos_robo`（自包名起 `rglob`） | 不会 | 否 |
+| G6 `check_all_dangling.py` | 整棵 `root`（`os.walk`） | 会 | **是** |
+
+**通用教训**：目录遍历型门禁的剪枝集是正确性的一部分，不是性能优化。
+任何 vendored / 克隆进仓的第三方树（`_ci/`、未来可能的 `third_party/`）
+都必须进 `_PRUNE`，且新增剪枝项要同时加「剪枝侧 + 对照侧」两个 case。
+
 ## 3. 每批迁移的七步流程
 
 一次搬一个"批次"（一个子系统，如 `platforms`、`models/pi0`、`train/datasets`），不要一次搬全部。
@@ -215,6 +288,17 @@ check-no-megatron: allow-self-reference
 
 这是**标记**而非硬编码文件名清单，所以豁免在使用现场可见，不会悄悄扩大成
 "tools/ 整个目录不扫"这种真盲区。
+
+本批还要过 §2.2 的两道本仓门禁 —— 它们查的是"迁完能不能 import"，闭包门禁不管这个：
+
+```bash
+python tools/check_leaf_import.py .      # 必须 MISSING-INTERNAL 0 / OTHER 0
+python tools/check_all_dangling.py .     # 必须 CLEAN
+```
+
+`check_leaf_import.py` 在本机的 `MISSING-EXTERNAL` 计数是环境性的、不计入 RC；
+但它的 `OK / 总数` 比值要看一眼：比值低说明本次运行覆盖面小，
+`MISSING-INTERNAL 0` 的证明力随之下降（原因见 §2.2），权威结论以 Step 7 的容器运行为准。
 
 ### Step 7 — 单测 + 容器内实跑
 ```bash

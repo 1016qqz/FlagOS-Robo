@@ -89,6 +89,16 @@ flagscale.runner.heartbeat.config
 # so the static scan reports them as dynamic references, not plain imports.
 flagscale.runner.heartbeat.gpu_health
 flagscale.runner.heartbeat.monitor
+# monitor.py:29 does `from .health_reader import HardwareHealthIndex,
+# HardwareHealthReader`.  This line was MISSING until the W1-W3 review found it:
+# monitor itself only entered this file as a C2 dynamic-reference hit (the two
+# config.py string paths above), and the closure tool resolves dynamic hits
+# against the planned set WITHOUT re-seeding them, so monitor's own static
+# imports were never expanded.  health_reader is stdlib-only (json/dataclasses/
+# typing) and imports nothing from this package, so adding it closes the set.
+# G5 (check_leaf_imports.py) now imports every leaf module and fails on exactly
+# this class of gap.
+flagscale.runner.heartbeat.health_reader
 
 # --- package roots: EXACT entries (=) so only the __init__.py moves -------
 # A bare subtree entry here would swallow the whole monorepo and make the

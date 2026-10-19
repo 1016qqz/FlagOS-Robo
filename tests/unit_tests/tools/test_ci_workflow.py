@@ -95,15 +95,35 @@ class TestFlagsExist:
         assert not problems, problems
 
     def test_negative_control_steps_are_present(self, wf_flat):
-        """A checker that cannot fail passes forever; CI must run --self-test."""
+        """A checker that cannot fail passes forever; CI must run --self-test.
+
+        The tool list is DERIVED from the workflow, not hardcoded. A hardcoded
+        list only constrains the tools that existed when it was written: when
+        check_leaf_import.py and check_all_dangling.py were added as gates G5
+        and G6, deleting their --self-test steps outright kept this test green,
+        which was measured, not assumed. Any tool CI trusts for a real scan is
+        therefore required to carry its own negative control.
+        """
+        scanned, self_tested = set(), set()
+        for tool, rest in _tool_invocations(wf_flat):
+            if "--self-test" in rest:
+                self_tested.add(tool)
+            else:
+                scanned.add(tool)
+        assert scanned, "no real scan invocation found -- the parser matched nothing"
+        missing = sorted(scanned - self_tested)
+        assert not missing, (
+            f"{missing} are trusted for a real scan but never run with "
+            "--self-test; a checker that cannot fail passes forever"
+        )
+        # Floor: these three predate the derivation and must stay wired even if
+        # someone turns their real-scan step into something the parser misses.
         for tool in (
             "tools/check_no_megatron.py",
             "tools/check_import_closure.py",
             "tools/compare_precision.py",
         ):
-            assert re.search(
-                re.escape(tool) + r"\s+--self-test", wf_flat
-            ), f"{tool} --self-test not wired into CI"
+            assert tool in self_tested, f"{tool} --self-test not wired into CI"
 
 
 class TestNoVersionDrift:

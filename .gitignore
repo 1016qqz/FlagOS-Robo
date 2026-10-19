@@ -30,6 +30,13 @@ checkpoints/
 # NOT part of the deliverable.
 _scratch/
 
+# Vendored upstream clone. docs/MIGRATION_SOP.md tells you to clone FlagScale
+# into _ci/FlagScale as the --source-root for the closure gate; it is a working
+# copy of someone else's repo and must never be committed here. Note the
+# traversal gates prune it too (tools/check_all_dangling.py _PRUNE) — see
+# MIGRATION_SOP.md §2.2.
+_ci/
+
 # Editor / OS
 .vscode/
 .idea/

@@ -78,6 +78,16 @@ jobs:
           fi
           echo "OK: no stale module-path strings"
 
+      - name: Prove the dangling-name audit can fail (negative control)
+        run: python tools/check_all_dangling.py --self-test
+
+      - name: No __all__ names bound only inside try/except ImportError
+        # Pure AST, so coverage here does NOT depend on installed deps -- it
+        # scans every .py regardless. A name declared in __all__ but bound only
+        # under a guarded import raises AttributeError on `from pkg import *`
+        # in exactly this kind of trimmed environment.
+        run: python tools/check_all_dangling.py .
+
   # ------------------------------------------------------------- closure
   # Guards W2-W3 migration scope. Runs the self-test unconditionally; the real
   # scan only runs when a FlagScale checkout is available, because the tool
@@ -145,6 +155,22 @@ jobs:
       - name: Precision tool negative control
         run: python tools/compare_precision.py --self-test
 
+      - name: Prove the leaf-import probe can fail (negative control)
+        run: python tools/check_leaf_import.py --self-test
+
+      - name: Every leaf module imports (CPU-reachable subset)
+        # Covers the closure gate's blind spot: a leaf reached only by STRING
+        # module path is never walked by check_import_closure.py, so a missing
+        # internal sibling goes unnoticed. That is exactly how health_reader.py
+        # ended up absent while the closure gate stayed green.
+        #
+        # Coverage here is PARTIAL by construction, and the limit is measured:
+        # an absent third-party dep MASKS an internal miss, because the package
+        # __init__ chain fails before the leaf's own import line ever runs. With
+        # no torch, only ~36 of 129 modules are reachable. Hence the same scan
+        # also runs in tests-gpu, where the full surface is importable.
+        run: python tools/check_leaf_import.py .
+
   # ------------------------------------------------------------ tests-gpu
   # Needs a CUDA runner. Skipped on forks (no access to self-hosted labels)
   # rather than failed, so external contributions stay mergeable.
@@ -183,3 +209,14 @@ jobs:
           source /root/miniconda3/etc/profile.d/conda.sh
           conda activate flagscale-train
           python tools/check_no_megatron.py --check-env
+
+      - name: Every leaf module imports (full surface)
+        # The authoritative run of this gate. tests-cpu can only reach ~28% of
+        # modules, and a missing third-party dep there masks a missing internal
+        # one -- the package __init__ raises before the leaf's import line runs.
+        # Here torch and the rest are present, so MISSING-INTERNAL reflects the
+        # real code and not the environment.
+        run: |
+          source /root/miniconda3/etc/profile.d/conda.sh
+          conda activate flagscale-train
+          python tools/check_leaf_import.py .

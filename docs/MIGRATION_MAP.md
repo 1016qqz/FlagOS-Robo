@@ -141,4 +141,15 @@ AST 静态 import 闭包有三类结构性盲区，**每类都已在本仓实测
 
 | 日期 | 上游 commit | 影响模块 | 是否回合 | 说明 |
 |---|---|---|---|---|
-| — | — | — | — | 暂无（baseline 钉死于 W1 D1） |
+| — | — | — | — | 暂无上游新增变更需回合（baseline 钉死于 W1 D1） |
+
+### 本仓偏离上游的本地修复
+
+迁移以逐字节搬运为准，但以下缺陷**继承自 baseline `f8e9a62c`**（上游同文件同行号同构），
+在本仓修复，不等待上游。每条都附回归测试，避免下次 upstream sync 被回灌。
+
+| # | 模块 | 上游原状 | 本地修复 | 回归测试 |
+|---|---|---|---|---|
+| L1 | `runner/utils.py` `get_addr()` | `if not ip.startswith == "127.0.0.1"` —— 比较 **bound method 对象**与 str，恒 `False`，`not False` 恒 `True` → 两段回环过滤完全失效，会把 `127.0.0.1` 当对外地址返回 | 新增 `_is_loopback()`，用 stdlib `ipaddress.ip_address(ip).is_loopback` 判**整个回环段**。不用 `startswith("127.0.0.1")` —— Debian 系 `gethostbyname(getfqdn())` 常返回 `127.0.1.1`，字面前缀抓不到但同属 `127.0.0.0/8` | `tests/unit_tests/runner/test_utils_get_addr.py`（5 例，含 `127.0.1.1` 变体）<br>负对照：修复前 3 failed / 2 passed，修复后 5 passed |
+| L2 | `runner/utils.py` `get_addr()` :318/:325 | 裸 `except:` ×2 | 收窄为 `except OSError`。`socket.error` 即 `OSError` 别名，`gethostbyname` 抛的 `socket.gaierror` 亦是其子类 → 覆盖面不变，但不再吞 `KeyboardInterrupt`/`SystemExit` | 同上 `test_all_probes_failing_falls_back_to_hostname` |
+| L3 | `runner/utils.py` `get_ip_addr()` :658 | 裸 `except:` | 同样收窄为 `OSError`；回落值 `"127.0.0.1"` **语义保持不动**（`is_master()` 依赖它） | 全仓代码层裸 `except:` 由 3 → 0 |
