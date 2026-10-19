@@ -61,6 +61,12 @@ from flagos_robo.models.vla.pretrained_config import PreTrainedConfig
 import flagos_robo.models.vla.gr00t_n1_5.processor_gr00t  # noqa: F401  register GR00T processor steps
 from flagos_robo.platforms import get_platform
 from flagos_robo.utils.precision_dump import dump_dir_from_env, dump_step
+from flagos_robo.utils.determinism import (
+    determinism_enabled,
+    enable_determinism,
+    make_dataloader_generator,
+    seed_worker,
+)
 
 # Monkey-patch: transformers 4.57+ kernel-hub discovery can't find flash_attn on some platforms
 # (e.g. MUSA), but direct import works fine. Replace _lazy_imports so transformers uses flash_attn directly.
@@ -432,6 +438,13 @@ def update_policy(
 
 def main(config: TrainConfig, seed: int):
     set_seed(seed)
+    # D1-7: stricter switches than set_seed's, gated on FLAGOS_DETERMINISTIC.
+    # Deliberately the first thing after set_seed and BEFORE set_device below:
+    # CUBLAS_WORKSPACE_CONFIG is read when the cuBLAS handle is created, so
+    # setting it later would leave use_deterministic_algorithms() to raise
+    # inside some matmul instead of here. Note set_seed leaves
+    # cudnn.deterministic=False; this flips it when alignment is requested.
+    enable_determinism(seed)
 
     policy_config = PreTrainedConfig.from_train_config(config)
   
@@ -482,6 +495,12 @@ def main(config: TrainConfig, seed: int):
         drop_last=False,
     )
 
+    # D1-7: worker/generator seeding. Both are None unless FLAGOS_DETERMINISTIC
+    # is set, which keeps the default DataLoader behaviour (and its speed)
+    # untouched. Without these, each worker process re-seeds `random` and
+    # `numpy.random` independently of the parent, so any augmentation built on
+    # them differs between the two sides we are comparing.
+    _det_on = determinism_enabled()
     dataloader = torch.utils.data.DataLoader(
         dataset,
         num_workers=num_workers,
@@ -491,6 +510,8 @@ def main(config: TrainConfig, seed: int):
         pin_memory=True,
         drop_last=False,
         prefetch_factor=2 if num_workers > 0 else None,
+        worker_init_fn=seed_worker if _det_on else None,
+        generator=make_dataloader_generator(seed) if _det_on else None,
     )
 
     # Setup preprocessor

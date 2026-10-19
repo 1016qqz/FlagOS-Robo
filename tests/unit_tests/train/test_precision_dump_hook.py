@@ -260,3 +260,89 @@ def test_the_real_training_loop_has_the_hook_in_the_right_place():
     hook = hook[: hook.index("\n\n")]
     assert "train_tracker.loss.val" in hook, hook
     assert "to_dict()" not in hook, "to_dict() returns window averages"
+
+
+def _train_loop_tree():
+    """Parse the shipped training loop. See the note in the test above."""
+    import ast
+    from pathlib import Path
+
+    src_path = (
+        Path(__file__).resolve().parents[3]
+        / "flagos_robo"
+        / "train"
+        / "train_gr00t_n1_5.py"
+    )
+    source = src_path.read_text(encoding="utf-8")
+    return source, ast.parse(source)
+
+
+def _call_lines(tree, name):
+    import ast
+
+    return sorted(
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and (
+            node.func.attr if isinstance(node.func, ast.Attribute)
+            else getattr(node.func, "id", None)
+        ) == name
+    )
+
+
+def test_determinism_is_enabled_before_any_cuda_handle_exists():
+    """D1-7 ordering invariant, pinned against the shipped file.
+
+    ``enable_determinism`` exports ``CUBLAS_WORKSPACE_CONFIG``, which cuBLAS
+    reads when it creates its handle. Move this call below ``set_device`` /
+    ``init_process_group`` and the export lands too late:
+    ``use_deterministic_algorithms(True)`` then raises from inside some matmul
+    rather than at startup -- an error whose message points nowhere near the
+    line that actually caused it.
+    """
+    _, tree = _train_loop_tree()
+
+    det = _call_lines(tree, "enable_determinism")
+    seed = _call_lines(tree, "set_seed")
+    device = _call_lines(tree, "set_device")
+    pg = _call_lines(tree, "init_process_group")
+
+    assert len(det) == 1, f"expected exactly one enable_determinism call, got {det}"
+    assert seed, "set_seed call vanished -- re-check this invariant"
+    assert device, "set_device call vanished -- re-check this invariant"
+    assert pg, "init_process_group call vanished -- re-check this invariant"
+    assert max(seed) < det[0], (
+        f"enable_determinism at line {det[0]} must come after set_seed at "
+        f"{max(seed)}, so its stricter settings win"
+    )
+    assert det[0] < min(device), (
+        f"enable_determinism at line {det[0]} must precede set_device at "
+        f"{min(device)}; CUBLAS_WORKSPACE_CONFIG is read at cuBLAS handle creation"
+    )
+    assert det[0] < min(pg), (
+        f"enable_determinism at line {det[0]} must precede init_process_group "
+        f"at {min(pg)}"
+    )
+
+
+def test_dataloader_seeding_is_gated_not_unconditional():
+    """Both seeding kwargs must be present AND switched off by default.
+
+    Passing ``worker_init_fn``/``generator`` unconditionally would change
+    ordinary training runs (worker RNG streams move, and a fixed generator
+    pins shuffling), which is a behaviour change nobody asked for. Passing
+    neither would leave worker RNGs uncontrolled and make the two sides
+    diverge for a reason that has nothing to do with the model.
+    """
+    source, tree = _train_loop_tree()
+
+    loader = _call_lines(tree, "DataLoader")
+    assert len(loader) == 1, f"expected one DataLoader call, got {loader}"
+
+    call = source[source.index("torch.utils.data.DataLoader("):]
+    call = call[: call.index("\n    )") + 6]
+    assert "worker_init_fn=seed_worker if" in call, call
+    assert "generator=make_dataloader_generator(seed) if" in call, call
+    # the gate must be the shared one, not a locally invented condition
+    assert "determinism_enabled()" in source
