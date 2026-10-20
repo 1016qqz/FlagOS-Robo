@@ -69,13 +69,28 @@ __all__ = [
     "step_relpath",
     "DUMP_ENV_VAR",
     "dump_dir_from_env",
+    "STEP_LOG_ENV_VAR",
+    "DEFAULT_STEP_LOG_FILENAME",
+    "step_log_dir_from_env",
+    "format_step_log_line",
+    "append_step_log",
 ]
 
 #: Env var that turns dumping on. Value is the output directory.
 DUMP_ENV_VAR = "FLAGOS_PRECISION_DUMP"
 
+#: Env var that turns the human-readable per-step log on. Value is the
+#: directory the log file is written into. Deliberately separate from
+#: ``DUMP_ENV_VAR``: the machine-readable JSONL and the human/grep-readable
+#: log serve different consumers and a run may want either alone.
+STEP_LOG_ENV_VAR = "FLAGOS_STEP_LOG"
+
 #: Loss records live in one append-only JSONL file per run directory.
 DEFAULT_LOSS_FILENAME = "loss.jsonl"
+
+#: Per-step log filename. Rank 0 is the only writer (see ``append_step_log``),
+#: so the name states the rank rather than pretending to be a merged log.
+DEFAULT_STEP_LOG_FILENAME = "rank0.log"
 
 #: Field order of a tensor stats record. Kept explicit and identical to
 #: ``tools/compare_precision.py::load_tensor_stats`` so a field rename on
@@ -177,6 +192,85 @@ def dump_dir_from_env(env: Mapping[str, str] | None = None) -> Path | None:
     if value.lower() in {"0", "false", "no", "off"}:
         return None
     return Path(value).expanduser()
+
+
+def step_log_dir_from_env(env: Mapping[str, str] | None = None) -> Path | None:
+    """Return the per-step log directory if step logging is enabled, else ``None``.
+
+    Same off-value handling as :func:`dump_dir_from_env` so the two gates cannot
+    disagree about what "off" means -- a run that writes the JSONL but silently
+    skips the log (or vice versa) is the failure this symmetry prevents.
+    """
+    source = os.environ if env is None else env
+    raw = source.get(STEP_LOG_ENV_VAR)
+    if raw is None:
+        return None
+    value = raw.strip()
+    if not value:
+        return None
+    if value.lower() in {"0", "false", "no", "off"}:
+        return None
+    return Path(value).expanduser()
+
+
+def format_step_log_line(
+    step: int,
+    *,
+    loss: Any = None,
+    extra: Mapping[str, Any] | None = None,
+) -> str:
+    """Render one step as ``[step N] loss=... grad_norm=...``.
+
+    The ``[step N]`` prefix starts at column 0 on purpose: the acceptance check
+    greps ``^\\[step (199|200)\\]``, and a logging-framework timestamp prefix
+    would push it off the line start and make the check unmatchable. That is
+    also why this is a plain file append rather than a ``logger`` call.
+
+    ``repr`` is used for floats so the line carries full precision -- a log
+    rounded to three decimals cannot be cross-checked against the JSONL.
+    """
+    parts = [f"[step {int(step)}]"]
+    if loss is not None:
+        parts.append(f"loss={_as_float(loss)!r}")
+    if extra:
+        for key in sorted(extra):
+            if key in ("step", "loss"):
+                continue
+            value = extra[key]
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                parts.append(f"{key}={value}")
+            else:
+                parts.append(f"{key}={float(value)!r}")
+    return " ".join(parts)
+
+
+def append_step_log(
+    out_dir: str | os.PathLike[str],
+    step: int,
+    *,
+    loss: Any = None,
+    extra: Mapping[str, Any] | None = None,
+    rank: int = 0,
+    only_rank: int | None = 0,
+    filename: str = DEFAULT_STEP_LOG_FILENAME,
+) -> Path | None:
+    """Append one ``[step N] ...`` line to the run's rank-0 log.
+
+    Returns the path written, or ``None`` when this rank was skipped. Flushed
+    and fsynced for the same reason as :func:`dump_loss`: the check reads this
+    file to prove the run reached its last step, so a hard kill must not be
+    able to swallow the final lines that are the evidence.
+    """
+    if only_rank is not None and rank != only_rank:
+        return None
+    path = Path(out_dir) / filename
+    path.parent.mkdir(parents=True, exist_ok=True)
+    line = format_step_log_line(step, loss=loss, extra=extra)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(line + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    return path
 
 
 def _as_float(value: Any) -> float:

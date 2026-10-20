@@ -346,3 +346,51 @@ def test_dataloader_seeding_is_gated_not_unconditional():
     assert "generator=make_dataloader_generator(seed) if" in call, call
     # the gate must be the shared one, not a locally invented condition
     assert "determinism_enabled()" in source
+
+
+def test_step_log_hook_shares_the_dump_hook_point():
+    """A5 ordering invariant, pinned against the shipped file.
+
+    ``append_step_log`` must sit in the same window as ``dump_step``: after
+    ``train_tracker.step()`` and before ``reset_averages()``. If it drifts past
+    the log block it writes ``loss=0.0`` on every ``log_freq`` step -- and
+    unlike the JSONL, nothing downstream re-parses this file as numbers, so a
+    zeroed log would pass the grep and still be wrong.
+    """
+    source, tree = _train_loop_tree()
+
+    log_lines = _call_lines(tree, "append_step_log")
+    dump_lines = _call_lines(tree, "dump_step")
+    reset_lines = _call_lines(tree, "reset_averages")
+    step_lines = _call_lines(tree, "step")
+
+    assert len(log_lines) == 1, f"expected exactly one append_step_log, got {log_lines}"
+    assert dump_lines and reset_lines and step_lines
+
+    assert min(step_lines) < log_lines[0] < min(reset_lines), (
+        f"append_step_log at {log_lines[0]} must fall between tracker.step() at "
+        f"{min(step_lines)} and reset_averages() at {min(reset_lines)}"
+    )
+    assert dump_lines[0] < log_lines[0], "keep the two artifacts adjacent and ordered"
+
+
+def test_step_log_hook_reads_the_same_meters_as_the_dump():
+    """Two artifacts of one run disagreeing is worse than one missing."""
+    source, _ = _train_loop_tree()
+
+    call = source[source.index("append_step_log("):]
+    call = call[: call.index("\n        )") + 10]
+
+    assert "train_tracker.loss.val" in call, call
+    assert "train_tracker.grad_norm.val" in call, call
+    assert "train_tracker.lr.val" in call, call
+    assert "to_dict()" not in call, "to_dict() returns window averages"
+    assert "rank=rank" in call, "every rank appending to one file interleaves"
+
+
+def test_step_log_is_inert_unless_its_env_var_is_set():
+    """The gate must be the shared helper, not a locally invented condition."""
+    source, _ = _train_loop_tree()
+
+    assert "step_log_dir_from_env()" in source
+    assert "if step_log_dir is not None:" in source

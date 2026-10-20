@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import os
 import random
 
 import pytest
@@ -23,10 +24,14 @@ from flagos_robo.utils.determinism import (
     CUBLAS_ENV_VAR,
     CUBLAS_REQUIRED_VALUE,
     DETERMINISM_ENV_VAR,
+    DETERMINISM_STRICT_VALUE,
+    FLASH_ATTN_ENV_VAR,
+    FLASH_ATTN_REQUIRED_VALUE,
     determinism_enabled,
     enable_determinism,
     make_dataloader_generator,
     seed_worker,
+    strict_determinism_enabled,
 )
 from flagos_robo.utils.precision_dump import DUMP_ENV_VAR, dump_dir_from_env
 
@@ -44,6 +49,27 @@ GATE_CASES = [
     ("true", True),
     ("yes", True),
     ("  1  ", True),
+    ("strict", True),
+]
+
+# (raw env value, expected strict). Strict must be a *sub-state* of enabled.
+STRICT_CASES = [
+    (None, False),
+    ("", False),
+    ("0", False),
+    ("off", False),
+    ("1", False),
+    ("true", False),
+    ("yes", False),
+    ("strict", True),
+    ("STRICT", True),
+    ("Strict", True),
+    ("  strict  ", True),
+    # Near-misses must NOT be strict: a typo has to degrade to the
+    # non-aborting tier, never silently make a training run fatal.
+    ("stric", False),
+    ("strict1", False),
+    ("strictly", False),
 ]
 
 
@@ -160,3 +186,153 @@ def test_generator_is_seeded_and_reproducible():
     assert torch.equal(ta, tb)
     c = make_dataloader_generator(8)
     assert not torch.equal(torch.randperm(10, generator=c), ta)
+
+
+@pytest.mark.parametrize(("raw", "expected"), STRICT_CASES)
+def test_strict_gate_interprets_env(raw, expected):
+    env = {} if raw is None else {DETERMINISM_ENV_VAR: raw}
+    assert strict_determinism_enabled(env) is expected
+
+
+@pytest.mark.parametrize(("raw", "_expected"), STRICT_CASES)
+def test_strict_implies_enabled(raw, _expected):
+    """Strict is a tier of "on", never an orthogonal flag.
+
+    If strict could be true while the plain gate was false, the training loop
+    would skip ``enable_determinism`` entirely and the strict request would be
+    silently dropped -- the exact class of bug that cost W4 D2 three rounds.
+    """
+    env = {} if raw is None else {DETERMINISM_ENV_VAR: raw}
+    if strict_determinism_enabled(env):
+        assert determinism_enabled(env) is True
+
+
+def test_strict_value_is_not_an_off_value():
+    """``strict`` must not collide with the off-vocabulary."""
+    assert DETERMINISM_STRICT_VALUE not in {"0", "false", "no", "off", ""}
+
+
+def test_warn_only_defaults_to_tier_non_strict(monkeypatch):
+    """``FLAGOS_DETERMINISTIC=1`` keeps warn_only=True (never aborts)."""
+    torch = pytest.importorskip("torch")
+    monkeypatch.setenv(DETERMINISM_ENV_VAR, "1")
+    seen = {}
+
+    def spy(flag, warn_only=False):
+        seen["flag"] = flag
+        seen["warn_only"] = warn_only
+
+    monkeypatch.setattr(torch, "use_deterministic_algorithms", spy)
+    assert enable_determinism(42) is True
+    assert seen == {"flag": True, "warn_only": True}
+
+
+def test_warn_only_defaults_to_tier_strict(monkeypatch):
+    """``FLAGOS_DETERMINISTIC=strict`` must pass warn_only=False.
+
+    This is the load-bearing assertion of the W4 D2 fix: warn_only=False is
+    what makes torch select the *deterministic* Flash Attention backward.
+    With warn_only=True the nondeterministic kernel still runs and only warns,
+    which measured as run-to-run divergence from step 2 onwards.
+    """
+    torch = pytest.importorskip("torch")
+    monkeypatch.setenv(DETERMINISM_ENV_VAR, "strict")
+    seen = {}
+
+    def spy(flag, warn_only=True):
+        seen["flag"] = flag
+        seen["warn_only"] = warn_only
+
+    monkeypatch.setattr(torch, "use_deterministic_algorithms", spy)
+    assert enable_determinism(42) is True
+    assert seen == {"flag": True, "warn_only": False}
+
+
+def test_explicit_warn_only_overrides_env_tier(monkeypatch):
+    """An explicit kwarg wins over the env tier, both directions."""
+    torch = pytest.importorskip("torch")
+    seen = {}
+    monkeypatch.setattr(
+        torch,
+        "use_deterministic_algorithms",
+        lambda flag, warn_only=None: seen.update(warn_only=warn_only),
+    )
+
+    monkeypatch.setenv(DETERMINISM_ENV_VAR, "strict")
+    enable_determinism(42, warn_only=True)
+    assert seen["warn_only"] is True
+
+    monkeypatch.setenv(DETERMINISM_ENV_VAR, "1")
+    enable_determinism(42, warn_only=False)
+    assert seen["warn_only"] is False
+
+
+def test_strict_still_applies_every_other_switch(monkeypatch):
+    """Strict must be additive: it adds warn_only=False, removes nothing."""
+    torch = pytest.importorskip("torch")
+    monkeypatch.setenv(DETERMINISM_ENV_VAR, "strict")
+    monkeypatch.delenv(CUBLAS_ENV_VAR, raising=False)
+    monkeypatch.setattr(torch, "use_deterministic_algorithms", lambda *a, **k: None)
+    assert enable_determinism(42) is True
+    import os
+
+    assert os.environ[CUBLAS_ENV_VAR] == CUBLAS_REQUIRED_VALUE
+    if torch.cuda.is_available():
+        assert torch.backends.cudnn.deterministic is True
+        assert torch.backends.cudnn.benchmark is False
+        assert torch.backends.cuda.matmul.allow_tf32 is False
+
+
+def test_flash_attn_determinism_env_is_set_by_enable(monkeypatch):
+    """``enable_determinism`` must export FLASH_ATTENTION_DETERMINISTIC=1.
+
+    gr00t_n1_5 forces ``_attn_implementation="flash_attention_2"``, which routes
+    attention to the ``flash_attn`` package. That is not a torch operator, so
+    ``torch.use_deterministic_algorithms`` cannot reach it and emits no warning;
+    transformers reads this env var instead. Measured consequence of leaving it
+    at its "0" default even under strict torch determinism: step-1 loss was
+    bit-identical while step-1 grad_norm already differed
+    (13.856263160705566 vs 13.859310150146484).
+    """
+    torch = pytest.importorskip("torch")
+    monkeypatch.setenv(DETERMINISM_ENV_VAR, "strict")
+    monkeypatch.delenv(FLASH_ATTN_ENV_VAR, raising=False)
+    monkeypatch.setattr(torch, "use_deterministic_algorithms", lambda *a, **k: None)
+
+    assert enable_determinism(42) is True
+    assert os.environ[FLASH_ATTN_ENV_VAR] == FLASH_ATTN_REQUIRED_VALUE
+
+
+def test_flash_attn_determinism_env_set_in_non_strict_tier_too(monkeypatch):
+    """The non-strict tier must set it as well.
+
+    The var only selects a slower deterministic backward; unlike
+    ``warn_only=False`` it can never abort a run, so withholding it from the
+    ``=1`` tier would buy no safety and would make that tier's determinism
+    claim untrue for any attention model.
+    """
+    torch = pytest.importorskip("torch")
+    monkeypatch.setenv(DETERMINISM_ENV_VAR, "1")
+    monkeypatch.delenv(FLASH_ATTN_ENV_VAR, raising=False)
+    monkeypatch.setattr(torch, "use_deterministic_algorithms", lambda *a, **k: None)
+
+    assert enable_determinism(42) is True
+    assert os.environ[FLASH_ATTN_ENV_VAR] == FLASH_ATTN_REQUIRED_VALUE
+
+
+def test_flash_attn_determinism_env_untouched_when_gate_off(monkeypatch):
+    """A normal training run must keep the fast nondeterministic kernel."""
+    monkeypatch.delenv(DETERMINISM_ENV_VAR, raising=False)
+    monkeypatch.delenv(FLASH_ATTN_ENV_VAR, raising=False)
+
+    assert enable_determinism(42) is False
+    assert FLASH_ATTN_ENV_VAR not in os.environ
+
+
+def test_flash_attn_env_value_is_exactly_what_transformers_compares(monkeypatch):
+    """transformers tests ``os.getenv(...) == "1"`` -- an exact string match.
+
+    So "true"/"yes"/"on" would all read as disabled. Pin the literal.
+    """
+    assert FLASH_ATTN_REQUIRED_VALUE == "1"
+    assert FLASH_ATTN_ENV_VAR == "FLASH_ATTENTION_DETERMINISTIC"

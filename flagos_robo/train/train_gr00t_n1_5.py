@@ -60,7 +60,12 @@ from flagos_robo.models.vla.base_policy import TrainablePolicy
 from flagos_robo.models.vla.pretrained_config import PreTrainedConfig
 import flagos_robo.models.vla.gr00t_n1_5.processor_gr00t  # noqa: F401  register GR00T processor steps
 from flagos_robo.platforms import get_platform
-from flagos_robo.utils.precision_dump import dump_dir_from_env, dump_step
+from flagos_robo.utils.precision_dump import (
+    append_step_log,
+    dump_dir_from_env,
+    dump_step,
+    step_log_dir_from_env,
+)
 from flagos_robo.utils.determinism import (
     determinism_enabled,
     enable_determinism,
@@ -461,6 +466,10 @@ def main(config: TrainConfig, seed: int):
     if precision_dump_dir is not None and is_main_process:
         logger.info(f"Precision dump enabled -> {precision_dump_dir}")
 
+    step_log_dir = step_log_dir_from_env()
+    if step_log_dir is not None and is_main_process:
+        logger.info(f"Per-step log enabled -> {step_log_dir}")
+
     dataset = make_dataset(config, policy_config)
     dist.barrier()
 
@@ -630,6 +639,25 @@ def main(config: TrainConfig, seed: int):
         if precision_dump_dir is not None:
             dump_step(
                 precision_dump_dir,
+                step,
+                loss=float(train_tracker.loss.val),
+                rank=rank,
+                extra={
+                    "grad_norm": float(train_tracker.grad_norm.val),
+                    "lr": float(train_tracker.lr.val),
+                },
+            )
+
+        # Per-step plain-text log (off unless FLAGOS_STEP_LOG is set). Shares
+        # this hook point with the dump above for the same reset_averages()
+        # reason, and reads the same `.val` meters, so the two artifacts of one
+        # run cannot disagree. Written as a bare file append rather than via
+        # `logger` because the line must start at column 0 with `[step N]`;
+        # the logger prefixes a timestamp, which would break a `^\[step N\]`
+        # grep over the resulting file.
+        if step_log_dir is not None:
+            append_step_log(
+                step_log_dir,
                 step,
                 loss=float(train_tracker.loss.val),
                 rank=rank,
