@@ -31,10 +31,12 @@ system:
 
 model:
   model_name: pi0
-  # Path to the pretrained pi0_base model checkpoint
-  checkpoint_dir: /workspace/models/lerobot/pi0_base
-  # Path to paligemma tokenizer
-  tokenizer_path: /workspace/models/google/paligemma-3b-pt-224
+  # Path to the pretrained pi0_base model checkpoint.
+  # Override with $FLAGOS_CHECKPOINT_DIR when the model lives elsewhere
+  # (different host, shared storage mount, or a locally converted copy).
+  checkpoint_dir: ${oc.env:FLAGOS_CHECKPOINT_DIR,/workspace/models/lerobot/pi0_base}
+  # Path to paligemma tokenizer. Override with $FLAGOS_TOKENIZER_PATH.
+  tokenizer_path: ${oc.env:FLAGOS_TOKENIZER_PATH,/workspace/models/google/paligemma-3b-pt-224}
   tokenizer_max_length: 48
 
   optimizer:
@@ -49,8 +51,8 @@ model:
       decay_lr: 2.5e-6
 
 data:
-  # Path to the training data
-  data_path: /workspace/datasets/lerobot/aloha_mobile_cabinet
+  # Path to the training data. Override with $FLAGOS_DATA_PATH.
+  data_path: ${oc.env:FLAGOS_DATA_PATH,/workspace/datasets/lerobot/aloha_mobile_cabinet}
   tolerance_s: 0.0001
   use_imagenet_stats: true
   # To match the input features naming from the dataset to the policy config
