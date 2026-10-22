@@ -75,6 +75,18 @@ from flagos_robo.train.utils.train_utils import (
     update_last_checkpoint,
 )
 from flagos_robo.platforms import get_platform
+from flagos_robo.utils.precision_dump import (
+    append_step_log,
+    dump_dir_from_env,
+    dump_step,
+    step_log_dir_from_env,
+)
+from flagos_robo.utils.determinism import (
+    determinism_enabled,
+    enable_determinism,
+    make_dataloader_generator,
+    seed_worker,
+)
 
 IMAGENET_STATS = {
     "mean": [[[0.485]], [[0.456]], [[0.406]]],  # (c,1,1)
@@ -527,6 +539,15 @@ def update_policy(
 
 def main(config: TrainConfig, seed: int):
     set_seed(seed)
+    # Stricter switches than set_seed's, gated on FLAGOS_DETERMINISTIC. Must run
+    # before any device is selected below: CUBLAS_WORKSPACE_CONFIG is read when
+    # the cuBLAS handle is created, so setting it later would leave
+    # use_deterministic_algorithms() to raise inside some matmul instead of
+    # here. set_seed above leaves cudnn.deterministic=False; this flips it when
+    # alignment is requested. Mirrors train_gr00t_n1_5.py so that "both entry
+    # points configure determinism identically" is a property of the code
+    # rather than a convention.
+    enable_determinism(seed)
 
     model_name = config.model.model_name.lower()
     if model_name not in ["pi0", "pi0.5"]:
@@ -561,6 +582,15 @@ def main(config: TrainConfig, seed: int):
 
     if is_main_process:
         logger.info(f"Policy config ({model_name}): {policy_config}")
+
+    # Resolved once per run, not per step. None => instrumentation inert.
+    precision_dump_dir = dump_dir_from_env()
+    if precision_dump_dir is not None and is_main_process:
+        logger.info(f"Precision dump enabled -> {precision_dump_dir}")
+
+    step_log_dir = step_log_dir_from_env()
+    if step_log_dir is not None and is_main_process:
+        logger.info(f"Per-step log enabled -> {step_log_dir}")
 
     dataset = make_dataset(config.data, policy_config)
 
@@ -662,6 +692,12 @@ def main(config: TrainConfig, seed: int):
         drop_last=False,
     )
 
+    # worker/generator seeding. Both are None unless FLAGOS_DETERMINISTIC is
+    # set, which keeps the default DataLoader behaviour (and its speed)
+    # untouched. Without these, each worker process re-seeds `random` and
+    # `numpy.random` independently of the parent, so any augmentation built on
+    # them differs between the two sides we are comparing.
+    _det_on = determinism_enabled()
     dataloader = torch.utils.data.DataLoader(
         dataset,
         num_workers=num_workers,
@@ -671,6 +707,8 @@ def main(config: TrainConfig, seed: int):
         pin_memory=True,  # Assume all data is on GPU
         drop_last=False,
         prefetch_factor=2 if num_workers > 0 else None,
+        worker_init_fn=seed_worker if _det_on else None,
+        generator=make_dataloader_generator(seed) if _det_on else None,
     )
 
     dist.barrier()
@@ -724,10 +762,48 @@ def main(config: TrainConfig, seed: int):
             lr_scheduler=lr_scheduler,
         )
 
-        print(f"train_tracker at step {step}: {train_tracker}")
-
         step += 1
         train_tracker.step()
+
+        # Precision-alignment dump (off unless FLAGOS_PRECISION_DUMP is set).
+        # Replaces an unconditional `print(train_tracker)` that fired on every
+        # step of every rank -- 3 ranks x 200 steps of untagged stdout, which
+        # is both noise and useless for alignment because it carries no rank
+        # and no stable field layout.
+        # Placed here deliberately: after `step += 1` so the recorded step
+        # matches the number the log line prints, and before the log block
+        # below. `.val` not the attribute itself: MetricsTracker.__getattr__
+        # returns the AverageMeter, and to_dict() would hand back the window
+        # average instead of this step's value.
+        if precision_dump_dir is not None:
+            dump_step(
+                precision_dump_dir,
+                step,
+                loss=float(train_tracker.loss.val),
+                rank=rank,
+                extra={
+                    "grad_norm": float(train_tracker.grad_norm.val),
+                    "lr": float(train_tracker.lr.val),
+                },
+            )
+
+        # Per-step plain-text log (off unless FLAGOS_STEP_LOG is set). Shares
+        # this hook point with the dump above and reads the same `.val` meters,
+        # so the two artifacts of one run cannot disagree. Written as a bare
+        # file append rather than via `logger` because the line must start at
+        # column 0 with `[step N]`; the logger prefixes a timestamp, which
+        # would break a `^\[step N\]` grep over the resulting file.
+        if step_log_dir is not None:
+            append_step_log(
+                step_log_dir,
+                step,
+                loss=float(train_tracker.loss.val),
+                rank=rank,
+                extra={
+                    "grad_norm": float(train_tracker.grad_norm.val),
+                    "lr": float(train_tracker.lr.val),
+                },
+            )
 
         # Update epoch counter for sampler.set_epoch() when we've processed one epoch worth of samples
         # This ensures proper data shuffling across epochs in distributed training.

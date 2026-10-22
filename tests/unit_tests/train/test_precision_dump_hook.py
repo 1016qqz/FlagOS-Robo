@@ -53,6 +53,13 @@ from flagos_robo.utils.precision_dump import (
 LOG_FREQ = 5
 STEPS = 20
 
+# Both training entry points are same-origin copies, and every invariant below
+# applies to both. Parametrising over this list is what makes the two sides
+# unable to drift apart: the hooks were added to the gr00t loop first and the
+# pi loop went without them for a whole milestone precisely because nothing
+# compared the two. Adding a third entry point means adding it here.
+ENTRY_POINTS = ["train_gr00t_n1_5.py", "train_pi.py"]
+
 
 def _logging_utils():
     """Import MetricsTracker, stubbing the torch.distributed it needs.
@@ -211,27 +218,19 @@ def test_only_rank_zero_writes_by_default(tmp_path):
     assert (tmp_path / DEFAULT_LOSS_FILENAME).exists()
 
 
-def test_the_real_training_loop_has_the_hook_in_the_right_place():
+@pytest.mark.parametrize("entry_point", ENTRY_POINTS)
+def test_the_real_training_loop_has_the_hook_in_the_right_place(entry_point):
     """Checks the shipped file, not a replay of its shape.
 
     The tests above pin the *semantics* of the placement; this one pins that
-    ``train_gr00t_n1_5.py`` actually honours them. Source inspection rather
-    than import because importing that module pulls in torch, transformers
+    each training entry point actually honours them. Source inspection rather
+    than import because importing those modules pulls in torch, transformers
     and flash_attn.
     """
     import ast
-    from pathlib import Path
-
-    src_path = (
-        Path(__file__).resolve().parents[3]
-        / "flagos_robo"
-        / "train"
-        / "train_gr00t_n1_5.py"
-    )
-    source = src_path.read_text(encoding="utf-8")
 
     # parse rather than grep so a mention inside a comment cannot satisfy this
-    tree = ast.parse(source)
+    source, tree = _train_loop_tree(entry_point)
 
     dump_lines = [
         node.lineno
@@ -249,30 +248,36 @@ def test_the_real_training_loop_has_the_hook_in_the_right_place():
     ]
 
     assert len(dump_lines) == 1, f"expected exactly one dump_step call, got {dump_lines}"
-    assert reset_lines, "reset_averages() call vanished -- re-check this invariant"
-    assert dump_lines[0] < min(reset_lines), (
-        f"dump_step at line {dump_lines[0]} must precede reset_averages() at "
-        f"line {min(reset_lines)}, otherwise log_freq steps dump loss=0.0"
+
+    # The log block is the invariant that holds on *both* entry points: the dump
+    # must happen before it. Only the gr00t loop additionally calls
+    # reset_averages() inside that block (the pi loop prints the running average
+    # without resetting, inherited from upstream), so that call is asserted
+    # conditionally -- demanding it on both sides would pin a difference this
+    # test has no business pinning.
+    log_at = _log_block_lineno(tree)
+    assert dump_lines[0] < log_at, (
+        f"dump_step at line {dump_lines[0]} must precede the log_freq block at "
+        f"line {log_at}, otherwise log_freq steps dump a reset or stale value"
     )
+    if reset_lines:
+        assert dump_lines[0] < min(reset_lines), (
+            f"dump_step at line {dump_lines[0]} must precede reset_averages() at "
+            f"line {min(reset_lines)}, otherwise log_freq steps dump loss=0.0"
+        )
 
     # and it must read .val, never the bare attribute or the averaged dict
-    hook = source[source.index("dump_step("):]
-    hook = hook[: hook.index("\n\n")]
+    hook = _call_source(source, tree, "dump_step")
     assert "train_tracker.loss.val" in hook, hook
     assert "to_dict()" not in hook, "to_dict() returns window averages"
 
 
-def _train_loop_tree():
-    """Parse the shipped training loop. See the note in the test above."""
+def _train_loop_tree(filename="train_gr00t_n1_5.py"):
+    """Parse a shipped training loop. See the note in the test above."""
     import ast
     from pathlib import Path
 
-    src_path = (
-        Path(__file__).resolve().parents[3]
-        / "flagos_robo"
-        / "train"
-        / "train_gr00t_n1_5.py"
-    )
+    src_path = Path(__file__).resolve().parents[3] / "flagos_robo" / "train" / filename
     source = src_path.read_text(encoding="utf-8")
     return source, ast.parse(source)
 
@@ -291,8 +296,76 @@ def _call_lines(tree, name):
     )
 
 
-def test_determinism_is_enabled_before_any_cuda_handle_exists():
-    """D1-7 ordering invariant, pinned against the shipped file.
+def _call_source(source, tree, name):
+    """Exact source text of the sole call to ``name``.
+
+    ``ast.get_source_segment`` rather than slicing ``source`` at a hardcoded
+    indent such as ``"\\n        )"``: the two entry points nest the hook at
+    different depths and separate it with different blank-line runs, so a
+    literal slice silently matches the wrong span on one of them (or raises).
+    """
+    import ast
+
+    nodes = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and (
+            node.func.attr if isinstance(node.func, ast.Attribute)
+            else getattr(node.func, "id", None)
+        ) == name
+    ]
+    assert len(nodes) == 1, f"expected exactly one {name} call, got {len(nodes)}"
+    segment = ast.get_source_segment(source, nodes[0])
+    assert segment, f"could not recover source for the {name} call"
+    return segment
+
+
+def _log_block_lineno(tree):
+    """Line of the ``if step % ...log_freq == 0:`` block.
+
+    This is the shared anchor for the ordering invariant: both entry points
+    have such a block, and whatever it does to the meters (reset, or merely
+    print the running average) must happen *after* the dump.
+    """
+    import ast
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.If) and "log_freq" in ast.dump(node.test):
+            return node.lineno
+    raise AssertionError("no `step % log_freq == 0` block in this entry point")
+
+
+def _main_lineno(tree):
+    import ast
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "main":
+            return node.lineno
+    raise AssertionError("no main() in this training entry point")
+
+
+def _device_init_lines(tree):
+    """Lines inside ``main()`` that can bring a CUDA context into existence.
+
+    The two entry points express this differently: the gr00t loop calls
+    ``set_device``/``init_process_group`` inline, while the pi loop hides both
+    behind an ``init_distributed()`` helper *defined earlier in the file*. A
+    bare line-number comparison against ``set_device`` therefore proves nothing
+    for the pi loop -- the definition sits above ``main()`` while the call sits
+    below it. Filtering to calls at or after ``main()`` makes the comparison
+    mean the same thing on both sides.
+    """
+    main_at = _main_lineno(tree)
+    lines = []
+    for name in ("set_device", "init_process_group", "init_distributed"):
+        lines += [ln for ln in _call_lines(tree, name) if ln >= main_at]
+    return sorted(lines)
+
+
+@pytest.mark.parametrize("entry_point", ENTRY_POINTS)
+def test_determinism_is_enabled_before_any_cuda_handle_exists(entry_point):
+    """D1-7 ordering invariant, pinned against the shipped files.
 
     ``enable_determinism`` exports ``CUBLAS_WORKSPACE_CONFIG``, which cuBLAS
     reads when it creates its handle. Move this call below ``set_device`` /
@@ -301,32 +374,28 @@ def test_determinism_is_enabled_before_any_cuda_handle_exists():
     rather than at startup -- an error whose message points nowhere near the
     line that actually caused it.
     """
-    _, tree = _train_loop_tree()
+    _, tree = _train_loop_tree(entry_point)
 
     det = _call_lines(tree, "enable_determinism")
     seed = _call_lines(tree, "set_seed")
-    device = _call_lines(tree, "set_device")
-    pg = _call_lines(tree, "init_process_group")
+    device_init = _device_init_lines(tree)
 
     assert len(det) == 1, f"expected exactly one enable_determinism call, got {det}"
     assert seed, "set_seed call vanished -- re-check this invariant"
-    assert device, "set_device call vanished -- re-check this invariant"
-    assert pg, "init_process_group call vanished -- re-check this invariant"
+    assert device_init, "no set_device/init_process_group/init_distributed in main()"
     assert max(seed) < det[0], (
         f"enable_determinism at line {det[0]} must come after set_seed at "
         f"{max(seed)}, so its stricter settings win"
     )
-    assert det[0] < min(device), (
-        f"enable_determinism at line {det[0]} must precede set_device at "
-        f"{min(device)}; CUBLAS_WORKSPACE_CONFIG is read at cuBLAS handle creation"
-    )
-    assert det[0] < min(pg), (
-        f"enable_determinism at line {det[0]} must precede init_process_group "
-        f"at {min(pg)}"
+    assert det[0] < min(device_init), (
+        f"enable_determinism at line {det[0]} must precede device/process-group "
+        f"init at {min(device_init)}; CUBLAS_WORKSPACE_CONFIG is read at cuBLAS "
+        f"handle creation"
     )
 
 
-def test_dataloader_seeding_is_gated_not_unconditional():
+@pytest.mark.parametrize("entry_point", ENTRY_POINTS)
+def test_dataloader_seeding_is_gated_not_unconditional(entry_point):
     """Both seeding kwargs must be present AND switched off by default.
 
     Passing ``worker_init_fn``/``generator`` unconditionally would change
@@ -335,7 +404,7 @@ def test_dataloader_seeding_is_gated_not_unconditional():
     neither would leave worker RNGs uncontrolled and make the two sides
     diverge for a reason that has nothing to do with the model.
     """
-    source, tree = _train_loop_tree()
+    source, tree = _train_loop_tree(entry_point)
 
     loader = _call_lines(tree, "DataLoader")
     assert len(loader) == 1, f"expected one DataLoader call, got {loader}"
@@ -348,7 +417,8 @@ def test_dataloader_seeding_is_gated_not_unconditional():
     assert "determinism_enabled()" in source
 
 
-def test_step_log_hook_shares_the_dump_hook_point():
+@pytest.mark.parametrize("entry_point", ENTRY_POINTS)
+def test_step_log_hook_shares_the_dump_hook_point(entry_point):
     """A5 ordering invariant, pinned against the shipped file.
 
     ``append_step_log`` must sit in the same window as ``dump_step``: after
@@ -357,29 +427,35 @@ def test_step_log_hook_shares_the_dump_hook_point():
     unlike the JSONL, nothing downstream re-parses this file as numbers, so a
     zeroed log would pass the grep and still be wrong.
     """
-    source, tree = _train_loop_tree()
+    source, tree = _train_loop_tree(entry_point)
 
     log_lines = _call_lines(tree, "append_step_log")
     dump_lines = _call_lines(tree, "dump_step")
     reset_lines = _call_lines(tree, "reset_averages")
     step_lines = _call_lines(tree, "step")
+    log_at = _log_block_lineno(tree)
 
     assert len(log_lines) == 1, f"expected exactly one append_step_log, got {log_lines}"
-    assert dump_lines and reset_lines and step_lines
+    assert dump_lines and step_lines
 
-    assert min(step_lines) < log_lines[0] < min(reset_lines), (
+    assert min(step_lines) < log_lines[0] < log_at, (
         f"append_step_log at {log_lines[0]} must fall between tracker.step() at "
-        f"{min(step_lines)} and reset_averages() at {min(reset_lines)}"
+        f"{min(step_lines)} and the log_freq block at {log_at}"
     )
+    if reset_lines:
+        assert log_lines[0] < min(reset_lines), (
+            f"append_step_log at {log_lines[0]} must precede reset_averages() at "
+            f"{min(reset_lines)}"
+        )
     assert dump_lines[0] < log_lines[0], "keep the two artifacts adjacent and ordered"
 
 
-def test_step_log_hook_reads_the_same_meters_as_the_dump():
+@pytest.mark.parametrize("entry_point", ENTRY_POINTS)
+def test_step_log_hook_reads_the_same_meters_as_the_dump(entry_point):
     """Two artifacts of one run disagreeing is worse than one missing."""
-    source, _ = _train_loop_tree()
+    source, tree = _train_loop_tree(entry_point)
 
-    call = source[source.index("append_step_log("):]
-    call = call[: call.index("\n        )") + 10]
+    call = _call_source(source, tree, "append_step_log")
 
     assert "train_tracker.loss.val" in call, call
     assert "train_tracker.grad_norm.val" in call, call
@@ -388,9 +464,10 @@ def test_step_log_hook_reads_the_same_meters_as_the_dump():
     assert "rank=rank" in call, "every rank appending to one file interleaves"
 
 
-def test_step_log_is_inert_unless_its_env_var_is_set():
+@pytest.mark.parametrize("entry_point", ENTRY_POINTS)
+def test_step_log_is_inert_unless_its_env_var_is_set(entry_point):
     """The gate must be the shared helper, not a locally invented condition."""
-    source, _ = _train_loop_tree()
+    source, _ = _train_loop_tree(entry_point)
 
     assert "step_log_dir_from_env()" in source
     assert "if step_log_dir is not None:" in source
