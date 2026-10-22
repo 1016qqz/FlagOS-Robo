@@ -39,7 +39,11 @@ from torch.distributed.fsdp import (
     fully_shard,
     MixedPrecisionPolicy,
 )
-from torch.distributed.checkpoint.state_dict import get_model_state_dict, StateDictOptions
+from torch.distributed.checkpoint.state_dict import (
+    get_model_state_dict,
+    get_optimizer_state_dict,
+    StateDictOptions,
+)
 
 from flagos_robo.logger import logger
 from flagos_robo.train.train_config import TrainConfig, DataConfig
@@ -70,10 +74,12 @@ from flagos_robo.models.pi05.modeling_pi05 import PI05Policy
 from flagos_robo.train.utils.logging_utils import AverageMeter, MetricsTracker
 from flagos_robo.train.utils.optim_setup import CosineDecayWithWarmupSchedulerConfig
 from flagos_robo.train.utils.train_utils import (
+    load_training_state_fsdp2,
     save_checkpoint,
     get_step_checkpoint_dir,
     update_last_checkpoint,
 )
+from flagos_robo.train.utils.random_utils import serialize_rng_state, deserialize_rng_state
 from flagos_robo.platforms import get_platform
 from flagos_robo.utils.precision_dump import (
     append_step_log,
@@ -728,6 +734,27 @@ def main(config: TrainConfig, seed: int):
     effective_batch_size = config.system.batch_size * dist.get_world_size()
 
     step = 0
+    resume_from = config.system.checkpoint.resume_from
+    if resume_from:
+        # Not inside `if is_main_process`: load_training_state_fsdp2 calls
+        # set_model_state_dict / set_optimizer_state_dict, which are
+        # collectives -- every rank must reach them or the job hangs.
+        step, _dl_state = load_training_state_fsdp2(
+            Path(resume_from), policy, optimizer, lr_scheduler,
+        )
+        # The LeRobot sampler/DataLoader has no resumable state, so the only
+        # faithful way to reach step N's data position is to replay the
+        # iterator. Replaying consumes RNG (worker seeding, augmentation), so
+        # the RNG restored from the checkpoint is snapshotted and put back
+        # afterwards -- otherwise the resumed run would diverge from the
+        # uninterrupted one on the very first step.
+        saved_rng = serialize_rng_state()
+        for _ in range(step):
+            next(dl_iter)
+        deserialize_rng_state(saved_rng)
+        logger.info(f"Resumed from checkpoint at step {step}")
+
+    dist.barrier()
 
     train_tracker = MetricsTracker(
         effective_batch_size,
@@ -739,8 +766,13 @@ def main(config: TrainConfig, seed: int):
 
     # To ensures proper data shuffling across epochs in distributed training
     epoch = 0
-    dataloader.sampler.set_epoch(epoch)
     samples_per_epoch = len(dataset) // effective_batch_size
+    if resume_from and samples_per_epoch > 0:
+        # Recover the epoch too, not just the step: set_epoch() seeds the
+        # distributed sampler's permutation, so resuming with epoch=0 would
+        # re-serve epoch 0's order while the step counter claims otherwise.
+        epoch = step // samples_per_epoch
+    dataloader.sampler.set_epoch(epoch)
 
     for _ in range(step, config.system.train_steps):
         start_time = time.perf_counter()
@@ -820,10 +852,15 @@ def main(config: TrainConfig, seed: int):
 
         if config.system.checkpoint.save_checkpoint and step % config.system.checkpoint.save_freq == 0:
             dist.barrier()
-            state_dict = get_model_state_dict(
-                policy,
-                options=StateDictOptions(full_state_dict=True, cpu_offload=True),
-            )
+            # Both gathers are collectives -- every rank must call them, so
+            # they stay above the is_main_process guard.
+            options = StateDictOptions(full_state_dict=True, cpu_offload=True)
+            state_dict = get_model_state_dict(policy, options=options)
+            # Without this the checkpoint carries weights but no
+            # optimizer_state.safetensors, and resume_from above would fail in
+            # load_optimizer_state_fsdp2 -- a checkpoint that cannot be
+            # resumed from is a silent half-checkpoint.
+            optimizer_state_dict = get_optimizer_state_dict(policy, optimizer, options=options)
             if is_main_process:
                 logger.info(f"Saving checkpoint at step {step}")
                 output_dir = Path(config.system.checkpoint.output_directory)
@@ -835,6 +872,7 @@ def main(config: TrainConfig, seed: int):
                     step=step,
                     config=config,
                     policy=policy.module if isinstance(policy, FSDP) else policy,
+                    optimizer_state_dict=optimizer_state_dict,
                     lr_scheduler=lr_scheduler,
                     preprocessor=preprocessor,
                     postprocessor=postprocessor,
