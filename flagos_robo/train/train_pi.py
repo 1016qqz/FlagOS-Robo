@@ -36,6 +36,8 @@ from torch.distributed.fsdp import (
     FullyShardedDataParallel as FSDP,
     ShardingStrategy,
     MixedPrecision,
+    fully_shard,
+    MixedPrecisionPolicy,
 )
 from torch.distributed.checkpoint.state_dict import get_model_state_dict, StateDictOptions
 
@@ -101,18 +103,47 @@ def init_distributed():
 
 
 def apply_fsdp(policy):
-    mp_policy = MixedPrecision(
+    """Shard the policy for data-parallel training.
+
+    FSDP_IMPL selects the implementation:
+      "fsdp2" (default) -- torch.distributed.fsdp.fully_shard, per-parameter
+          DTensor sharding, applied in place on the root module only.
+      "fsdp1" -- legacy FullyShardedDataParallel wrapper.
+
+    Only the root module is sharded. The pi0/pi0.5 decoder forward reaches into
+    submodule weights directly (modeling_pi0.py builds its own attention loop),
+    so wrapping submodules as separate FSDP units would expose un-all-gathered
+    DTensors to those manual accesses. A single root unit all-gathers every
+    parameter in one pre-forward hook, which keeps those accesses valid.
+
+    reshard_after_forward=False matches FSDP1's SHARD_GRAD_OP (ZeRO-2): keep
+    parameters unsharded between forward and backward, shard only gradients and
+    optimizer state.
+    """
+    impl = os.environ.get("FSDP_IMPL", "fsdp2").lower()
+
+    if impl == "fsdp1":
+        mp_policy = MixedPrecision(
+            param_dtype=torch.bfloat16,
+            reduce_dtype=torch.float32,
+            buffer_dtype=torch.bfloat16,
+        )
+        return FSDP(
+            policy,
+            sharding_strategy=ShardingStrategy.SHARD_GRAD_OP,
+            mixed_precision=mp_policy,
+            device_id=get_platform().current_device(),
+            use_orig_params=True,
+        )
+
+    if impl != "fsdp2":
+        raise ValueError(f"Unknown FSDP_IMPL: {impl!r}. Use 'fsdp2' or 'fsdp1'.")
+
+    mp_policy = MixedPrecisionPolicy(
         param_dtype=torch.bfloat16,
         reduce_dtype=torch.float32,
-        buffer_dtype=torch.bfloat16,
     )
-    policy = FSDP(
-        policy,
-        sharding_strategy=ShardingStrategy.SHARD_GRAD_OP,
-        mixed_precision=mp_policy,
-        device_id=get_platform().current_device(),
-        use_orig_params=True,
-    )
+    fully_shard(policy, mp_policy=mp_policy, reshard_after_forward=False)
     return policy
 
 
@@ -452,7 +483,7 @@ def update_policy(
 
     autocast_context = torch.amp.autocast(get_platform().amp_device_type(), dtype=torch.bfloat16) if use_amp else nullcontext()
     with autocast_context:
-        loss, _= policy.forward(batch)
+        loss, _= policy(batch)
     # TODO(rcadene): policy.unnormalize_outputs(out_dict)
 
     loss.backward()
@@ -484,6 +515,9 @@ def update_policy(
         policy_model.update()
 
     train_metrics.loss = loss.item()
+    # FSDP2 shards parameters as DTensors, so clip_grad_norm_ returns a DTensor.
+    if hasattr(grad_norm, "full_tensor"):
+        grad_norm = grad_norm.full_tensor()
     train_metrics.grad_norm = grad_norm.item()
     train_metrics.lr = optimizer.param_groups[0]["lr"]
     train_metrics.update_s = time.perf_counter() - start_time
@@ -667,7 +701,6 @@ def main(config: TrainConfig, seed: int):
 
     # To ensures proper data shuffling across epochs in distributed training
     epoch = 0
-    samples_per_epoch = None
     dataloader.sampler.set_epoch(epoch)
     samples_per_epoch = len(dataset) // effective_batch_size
 
@@ -697,8 +730,12 @@ def main(config: TrainConfig, seed: int):
         train_tracker.step()
 
         # Update epoch counter for sampler.set_epoch() when we've processed one epoch worth of samples
-        # This ensures proper data shuffling across epochs in distributed training
-        if step % samples_per_epoch == 0:
+        # This ensures proper data shuffling across epochs in distributed training.
+        # The `> 0` guard matters: samples_per_epoch is an integer division, so a
+        # dataset smaller than one effective batch (len(dataset) < batch_size *
+        # world_size) makes it 0 and the modulo would raise ZeroDivisionError on
+        # the very first step. Mirrors train_gr00t_n1_5.py.
+        if samples_per_epoch > 0 and step % samples_per_epoch == 0:
             epoch += 1
             dataloader.sampler.set_epoch(epoch)
 
@@ -721,7 +758,7 @@ def main(config: TrainConfig, seed: int):
                     checkpoint_dir=checkpoint_dir,
                     step=step,
                     config=config,
-                    policy=policy.module,
+                    policy=policy.module if isinstance(policy, FSDP) else policy,
                     lr_scheduler=lr_scheduler,
                     preprocessor=preprocessor,
                     postprocessor=postprocessor,
