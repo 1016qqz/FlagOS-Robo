@@ -51,6 +51,7 @@ from flagos_robo.train.utils.logging_utils import (
 from flagos_robo.train.utils.train_utils import (
     get_step_checkpoint_dir,
     load_training_state_fsdp2,
+    replay_dataloader_to_step,
     save_checkpoint,
     update_last_checkpoint,
 )
@@ -563,17 +564,26 @@ def main(config: TrainConfig, seed: int):
 
     dl_iter = cycle(dataloader)
 
+    effective_batch_size = config.system.batch_size * world_size
+    # Both are needed by the resume block below, which has to know where the
+    # epoch boundaries fall while it replays the dataloader.
+    epoch = 0
+    samples_per_epoch = num_frames // effective_batch_size
+
     step = 0
     resume_from = config.system.checkpoint.resume_from
     if resume_from:
         step, _dl_state = load_training_state_fsdp2(
             Path(resume_from), policy, optimizer, lr_scheduler,
         )
+        # Two independent pieces of hidden state have to be handled here: the
+        # global RNG that replaying consumes (snapshotted and restored), and
+        # the sampler's own epoch-seeded generator, which an RNG snapshot
+        # cannot reach. See replay_dataloader_to_step.
         saved_rng = serialize_rng_state()
-        for _ in range(step):
-            next(dl_iter)
+        epoch = replay_dataloader_to_step(dl_iter, sampler, step, samples_per_epoch)
         deserialize_rng_state(saved_rng)
-        logger.info(f"Resumed from checkpoint at step {step}")
+        logger.info(f"Resumed from checkpoint at step {step} (epoch {epoch})")
 
     dist.barrier()
 
@@ -587,8 +597,6 @@ def main(config: TrainConfig, seed: int):
         "dataloading_s": AverageMeter("data_s", ":.3f"),
     }
 
-    effective_batch_size = config.system.batch_size * world_size
-
     train_tracker = MetricsTracker(
         effective_batch_size,
         num_frames,
@@ -597,10 +605,8 @@ def main(config: TrainConfig, seed: int):
         initial_step=step,
     )
 
-    epoch = 0
-    samples_per_epoch = num_frames // effective_batch_size
-    if resume_from and samples_per_epoch > 0:
-        epoch = step // samples_per_epoch
+    # `epoch` is 0 for a fresh run, or whatever the replay above left the
+    # sampler on for a resumed one.
     sampler.set_epoch(epoch)
 
     for _ in range(step, config.system.train_steps):

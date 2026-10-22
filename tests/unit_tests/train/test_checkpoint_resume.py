@@ -40,6 +40,8 @@ ENTRY_POINTS = ["train_gr00t_n1_5.py", "train_pi.py"]
 
 TRAIN_DIR = Path(__file__).resolve().parents[3] / "flagos_robo" / "train"
 
+UTILS = TRAIN_DIR / "utils" / "train_utils.py"
+
 
 def _tree(entry_point):
     source = (TRAIN_DIR / entry_point).read_text(encoding="utf-8")
@@ -130,31 +132,24 @@ def test_resume_restores_the_epoch_not_only_the_step(entry_point):
     """
     _, tree = _tree(entry_point)
 
-    epoch_recovery = [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.If)
-        and "resume_from" in {n.id for n in ast.walk(node.test) if isinstance(n, ast.Name)}
-        and "samples_per_epoch"
-        in {n.id for n in ast.walk(node.test) if isinstance(n, ast.Name)}
-    ]
-    assert epoch_recovery, (
-        "expected `if resume_from and samples_per_epoch > 0:` recovering epoch "
-        "from step; without the samples_per_epoch guard this is also a "
-        "division by zero on a dataset smaller than one global batch"
-    )
+    replay = _sole_call(tree, "replay_dataloader_to_step")
 
+    # The epoch the loop continues from must come OUT of the replay, because
+    # the replay is what moved the sampler there. Deriving it separately
+    # (`epoch = step // samples_per_epoch`) is the stale-by-construction
+    # version: it leaves the sampler itself on epoch 0.
     assert any(
         isinstance(node, ast.Assign)
+        and node.value is replay
         and any(isinstance(t, ast.Name) and t.id == "epoch" for t in node.targets)
-        for node in ast.walk(epoch_recovery[0])
-    ), "the guarded block must assign epoch"
+        for node in ast.walk(tree)
+    ), "`epoch` must be assigned from replay_dataloader_to_step()'s return value"
 
-    # set_epoch has to run after that recovery, otherwise it seeds with 0
+    # And the pre-loop set_epoch must run after that, otherwise it re-seeds 0.
     set_epoch_lines = _call_lines(tree, "set_epoch")
     assert set_epoch_lines, "no set_epoch() call -- sampler would never reshuffle"
-    assert any(ln > epoch_recovery[0].lineno for ln in set_epoch_lines), (
-        "set_epoch() must be called after the epoch is recovered from step"
+    assert any(ln > replay.lineno for ln in set_epoch_lines), (
+        "set_epoch() must be called after the epoch is recovered by the replay"
     )
 
 
@@ -176,10 +171,15 @@ def test_dataloader_replay_does_not_burn_the_restored_rng(entry_point):
         "dataloader replay"
     )
 
-    # `range(step)` with a SINGLE argument -- the main training loop is
-    # `range(step, train_steps)` and also calls next(dl_iter), so an arity
-    # check is what separates the replay from the loop it fast-forwards to.
-    replays = [
+    replay = _sole_call(tree, "replay_dataloader_to_step")
+
+    assert any(ln < replay.lineno for ln in ser), "snapshot the RNG before replaying"
+    assert any(ln > replay.lineno for ln in deser), "restore the RNG after replaying"
+
+    # An inline `for _ in range(step): next(dl_iter)` is the thing the helper
+    # replaces -- it cannot advance the sampler epoch, so it must not come
+    # back into either loop.
+    inline = [
         node
         for node in ast.walk(tree)
         if isinstance(node, ast.For)
@@ -192,16 +192,11 @@ def test_dataloader_replay_does_not_burn_the_restored_rng(entry_point):
             _called_name(c) == "next" for c in ast.walk(node) if isinstance(c, ast.Call)
         )
     ]
-    assert len(replays) == 1, (
-        "expected exactly one `for _ in range(step): next(dl_iter)` replay "
-        f"loop, found {len(replays)}"
+    assert not inline, (
+        "inline `for _ in range(step): next(dl_iter)` replay at line "
+        f"{inline[0].lineno if inline else '?'} -- use "
+        "replay_dataloader_to_step(), which also advances the sampler epoch"
     )
-
-    replay = replays[0]
-    assert any(ln < replay.lineno for ln in ser), "snapshot the RNG before replaying"
-    assert any(
-        ln > replay.end_lineno for ln in deser
-    ), "restore the RNG after replaying"
 
 
 @pytest.mark.parametrize("entry_point", ENTRY_POINTS)
@@ -241,3 +236,80 @@ def test_save_persists_the_optimizer_state_resume_will_demand(entry_point):
             "get_optimizer_state_dict is a collective -- inside a rank-gated "
             f"block (line {node.lineno}) it deadlocks every non-zero rank"
         )
+
+
+def _load_replay_helper():
+    """Exec just ``replay_dataloader_to_step`` out of ``train_utils``.
+
+    Importing the module would pull in torch, safetensors and the model
+    constants; the helper itself is pure control flow over two arguments, so
+    its source is lifted and exec'd in an empty namespace instead.
+    """
+    tree = ast.parse(UTILS.read_text(encoding="utf-8"))
+    fn = next(
+        (
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "replay_dataloader_to_step"
+        ),
+        None,
+    )
+    assert fn is not None, f"replay_dataloader_to_step not found in {UTILS}"
+    namespace: dict = {}
+    exec(compile(ast.Module(body=[fn], type_ignores=[]), str(UTILS), "exec"), namespace)
+    return namespace["replay_dataloader_to_step"]
+
+
+class _RecordingSampler:
+    """Records the epoch sequence set on it, like DistributedSampler would."""
+
+    def __init__(self):
+        self.epochs = []
+
+    def set_epoch(self, epoch):
+        self.epochs.append(epoch)
+
+
+def test_replay_advances_the_sampler_epoch_on_every_boundary():
+    """The whole point of the helper, checked by behavior rather than by AST.
+
+    ``DistributedSampler``'s permutation is seeded from ``seed + epoch`` by a
+    generator private to the sampler, so replaying the iterator without
+    advancing the epoch re-serves epoch 0's order at every boundary
+    ``cycle()`` crosses. 10 steps at 4 samples per epoch cross two of them.
+    """
+    replay = _load_replay_helper()
+
+    sampler = _RecordingSampler()
+    consumed = []
+    dl_iter = iter(range(100))
+
+    epoch = replay(
+        (consumed.append(x) or x for x in dl_iter), sampler, step=10, samples_per_epoch=4
+    )
+
+    assert len(consumed) == 10, "the iterator must be advanced exactly `step` times"
+    assert sampler.epochs == [1, 2], (
+        "expected the epoch to be advanced at steps 4 and 8; got "
+        f"{sampler.epochs}"
+    )
+    assert epoch == 2, "the returned epoch is what the training loop continues from"
+
+
+def test_replay_is_a_noop_without_a_step_or_a_known_epoch_size():
+    """Fresh runs and degenerate epoch sizes must not touch the sampler.
+
+    ``samples_per_epoch`` is an integer division, so a dataset smaller than
+    one global batch makes it 0 -- that has to stay a no-op rather than a
+    ZeroDivisionError.
+    """
+    replay = _load_replay_helper()
+
+    sampler = _RecordingSampler()
+    assert replay(iter(range(10)), sampler, step=0, samples_per_epoch=4) == 0
+    assert sampler.epochs == [], "a fresh run must not call set_epoch at all"
+
+    sampler = _RecordingSampler()
+    assert replay(iter(range(10)), sampler, step=5, samples_per_epoch=0) == 0
+    assert sampler.epochs == [], "samples_per_epoch=0 must not advance the epoch"

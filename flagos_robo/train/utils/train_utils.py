@@ -223,6 +223,37 @@ def load_training_state_fsdp2(
     return step, dl_state
 
 
+def replay_dataloader_to_step(dl_iter, sampler, step: int, samples_per_epoch: int) -> int:
+    """Fast-forward a cycling dataloader iterator to ``step``, faithfully.
+
+    ``DistributedSampler.__iter__`` seeds a generator private to the sampler
+    with ``self.seed + self.epoch`` (see torch/utils/data/distributed.py), so
+    its permutation is a function of the EPOCH ALONE -- global RNG state does
+    not enter into it. Replaying the iterator without advancing the sampler
+    epoch therefore re-serves epoch 0's permutation on every epoch boundary
+    ``cycle()`` crosses, while the uninterrupted run was already on epoch
+    1, 2, ... at those same boundaries. The resumed run then trains on a
+    different data order than the run it claims to continue -- no error, no
+    visible symptom in the loss curve.
+
+    Upstream's own warning is the other half of this: ``set_epoch`` must be
+    called BEFORE the iterator is created to take effect, so each boundary
+    sets the epoch and then lets ``cycle()`` build the next iterator.
+
+    Returns the epoch the sampler has been left on, which is the epoch the
+    training loop must continue from.
+    """
+    epoch = 0
+    for i in range(step):
+        next(dl_iter)
+        if samples_per_epoch > 0 and (i + 1) % samples_per_epoch == 0:
+            epoch += 1
+            # Takes effect when cycle() re-iters the exhausted dataloader,
+            # which is exactly the next epoch boundary.
+            sampler.set_epoch(epoch)
+    return epoch
+
+
 def save_optimizer_state(state_dict: dict, save_dir: Path) -> None:
     state_dict = dict(state_dict)
     param_groups = state_dict.pop("param_groups")

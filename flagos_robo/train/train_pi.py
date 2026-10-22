@@ -75,6 +75,7 @@ from flagos_robo.train.utils.logging_utils import AverageMeter, MetricsTracker
 from flagos_robo.train.utils.optim_setup import CosineDecayWithWarmupSchedulerConfig
 from flagos_robo.train.utils.train_utils import (
     load_training_state_fsdp2,
+    replay_dataloader_to_step,
     save_checkpoint,
     get_step_checkpoint_dir,
     update_last_checkpoint,
@@ -733,6 +734,12 @@ def main(config: TrainConfig, seed: int):
 
     effective_batch_size = config.system.batch_size * dist.get_world_size()
 
+    # Computed before the resume block below, which needs it to advance the
+    # sampler epoch while replaying. To ensure proper data shuffling across
+    # epochs in distributed training.
+    epoch = 0
+    samples_per_epoch = len(dataset) // effective_batch_size
+
     step = 0
     resume_from = config.system.checkpoint.resume_from
     if resume_from:
@@ -744,15 +751,21 @@ def main(config: TrainConfig, seed: int):
         )
         # The LeRobot sampler/DataLoader has no resumable state, so the only
         # faithful way to reach step N's data position is to replay the
-        # iterator. Replaying consumes RNG (worker seeding, augmentation), so
-        # the RNG restored from the checkpoint is snapshotted and put back
-        # afterwards -- otherwise the resumed run would diverge from the
-        # uninterrupted one on the very first step.
+        # iterator. Two separate pieces of hidden state make this subtle:
+        #   - replaying consumes global RNG (worker seeding, augmentation), so
+        #     the RNG restored from the checkpoint is snapshotted and put back
+        #     afterwards;
+        #   - the sampler's permutation comes from a generator private to it,
+        #     seeded with seed + epoch, which the RNG snapshot cannot touch.
+        #     replay_dataloader_to_step advances that epoch on the same
+        #     boundaries the training loop below does, and returns the epoch to
+        #     continue from.
         saved_rng = serialize_rng_state()
-        for _ in range(step):
-            next(dl_iter)
+        epoch = replay_dataloader_to_step(
+            dl_iter, dataloader.sampler, step, samples_per_epoch
+        )
         deserialize_rng_state(saved_rng)
-        logger.info(f"Resumed from checkpoint at step {step}")
+        logger.info(f"Resumed from checkpoint at step {step} (epoch {epoch})")
 
     dist.barrier()
 
@@ -764,14 +777,8 @@ def main(config: TrainConfig, seed: int):
         initial_step=step,
     )
 
-    # To ensures proper data shuffling across epochs in distributed training
-    epoch = 0
-    samples_per_epoch = len(dataset) // effective_batch_size
-    if resume_from and samples_per_epoch > 0:
-        # Recover the epoch too, not just the step: set_epoch() seeds the
-        # distributed sampler's permutation, so resuming with epoch=0 would
-        # re-serve epoch 0's order while the step counter claims otherwise.
-        epoch = step // samples_per_epoch
+    # `epoch` is 0 for a fresh run, or whatever the replay above left the
+    # sampler on for a resumed one.
     dataloader.sampler.set_epoch(epoch)
 
     for _ in range(step, config.system.train_steps):
