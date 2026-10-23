@@ -88,6 +88,24 @@ jobs:
         # in exactly this kind of trimmed environment.
         run: python tools/check_all_dangling.py .
 
+      - name: Prove the symbol-reference audit can fail (negative control)
+        run: python tools/check_symbol_refs.py --self-test
+
+      - name: Every internal from-import name resolves
+        # Closure gates prove the MODULE imports; this proves each NAME in
+        # `from .x import a, b` is actually defined there. Also catches the
+        # guarded-import fallback that forgets to bind the name it degrades.
+        run: python tools/check_symbol_refs.py .
+
+      - name: Prove the dependency audit can fail (negative control)
+        run: python tools/check_dep_drift.py --self-test
+
+      - name: Dependency declarations agree and optional deps stay guarded
+        # pyproject <-> requirements/*.txt version floors must not drift, an
+        # imported third-party root must be declared somewhere, and an
+        # optional-only dep must sit behind try/except or find_spec.
+        run: python tools/check_dep_drift.py .
+
   # ------------------------------------------------------------- closure
   # Guards W2-W3 migration scope. Runs the self-test unconditionally; the real
   # scan only runs when a FlagScale checkout is available, because the tool
@@ -154,6 +172,17 @@ jobs:
 
       - name: Precision tool negative control
         run: python tools/compare_precision.py --self-test
+
+      - name: Prove the coverage ratchet can fail (negative control)
+        run: python tools/check_test_coverage.py --self-test
+
+      - name: Test reference ratchet does not move backwards
+        # NOT a coverage gate -- 86 modules have no test at all and that is the
+        # known state. This pins today's high-water mark (tools/
+        # test_coverage_baseline.json) so the numbers can only improve. A
+        # deliberate drop needs --update-baseline in the same commit, which puts
+        # the new number in the diff where a reviewer sees it.
+        run: python tools/check_test_coverage.py .
 
       - name: Prove the leaf-import probe can fail (negative control)
         run: python tools/check_leaf_import.py --self-test

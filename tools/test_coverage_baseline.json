@@ -1,0 +1,8 @@
+{
+  "_comment": "High-water mark for tools/check_test_coverage.py. blind_loc may only fall and referenced_modules may only rise. Regenerate with --update-baseline, and say in the commit message why coverage moved.",
+  "blind_loc": 22514,
+  "referenced_modules": 48,
+  "test_files": 38,
+  "total_loc": 33045,
+  "total_modules": 132
+}

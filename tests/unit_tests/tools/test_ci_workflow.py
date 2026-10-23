@@ -43,7 +43,9 @@ def wf_flat(wf_text: str) -> str:
 
 def _tool_invocations(flat: str):
     for line in flat.splitlines():
-        m = re.search(r"(?:^|\s)(tools/[a-z_]+\.py)(.*)", line)
+        # [a-z0-9_] not [a-z_]: a checker named e.g. check_fp8_cast.py must not
+        # be invisible to this scan, or wiring it to CI reads as "unwired".
+        m = re.search(r"(?:^|\s)(tools/[a-z0-9_]+\.py)(.*)", line)
         if m:
             yield m.group(1), m.group(2)
 
@@ -124,6 +126,87 @@ class TestFlagsExist:
             "tools/compare_precision.py",
         ):
             assert tool in self_tested, f"{tool} --self-test not wired into CI"
+
+
+# Gaps that are known, deliberate and scheduled -- not accidents. Each entry is
+# a decision, so it carries its reason. Anything NOT listed here is a drift and
+# goes red; and an entry that stops being a real gap also goes red, so closing
+# the gap forces the allowlist to shrink instead of silently rotting.
+KNOWN_UNWIRED_CHECKERS = {
+    "tools/check_conf_paths.py": (
+        "deferred to the dedicated CI workstream together with promoting "
+        "gates.sh into the repo as tools/run_gates.sh (review items B/B')"
+    ),
+}
+KNOWN_GATES_SCRIPT_GAPS = {
+    "tools/compare_precision.py": (
+        "gates.sh predates compare_precision.py's --self-test; wiring it is "
+        "part of the same deferred CI workstream (review item N)"
+    ),
+}
+
+
+class TestEveryGateIsWired:
+    """A checker that exists on disk but is never invoked protects nothing.
+
+    The derived --self-test check only constrains tools CI already calls; it is
+    silent about a checker that was written, committed, and then forgotten.
+    That is the default state here, not an exotic one: check_symbol_refs.py,
+    check_dep_drift.py and check_test_coverage.py all began as one-off review
+    scripts living outside the repo.
+    """
+
+    def test_every_checker_in_tools_is_invoked_by_ci(self, wf_flat):
+        # Discover gates by what they DECLARE, not by how they are spelled. A
+        # check_*.py glob would miss a gate named audit_*.py / verify_*.py and
+        # report it as wired-and-fine; every gate here offers --self-test, so
+        # that string is the self-declaration we key on.
+        on_disk = {
+            f"tools/{p.name}"
+            for p in (REPO_ROOT / "tools").glob("*.py")
+            if "--self-test" in p.read_text()
+        }
+        assert on_disk, "no tools/*.py declares --self-test -- zero-work check"
+        invoked = {t for t, _ in _tool_invocations(wf_flat)}
+        unwired = (on_disk - invoked) - set(KNOWN_UNWIRED_CHECKERS)
+        assert not sorted(unwired), (
+            f"{sorted(unwired)} exist in tools/ but CI never runs them -- a gate "
+            "nobody invokes protects nothing. If this is deliberate, add it to "
+            "KNOWN_UNWIRED_CHECKERS with the reason."
+        )
+        healed = sorted(t for t in KNOWN_UNWIRED_CHECKERS if t in invoked)
+        assert not healed, (
+            f"{healed} are now wired into CI -- drop them from "
+            "KNOWN_UNWIRED_CHECKERS so the allowlist does not rot"
+        )
+
+    def test_local_gates_script_covers_the_checkers_ci_trusts(self, wf_flat):
+        """gates.sh is the local mirror of CI; a one-directional containment.
+
+        gates.sh may run extra ad-hoc probes, but it must not MISS a checker CI
+        trusts -- otherwise a local green run does not predict the CI verdict.
+        """
+        gates = REPO_ROOT.parent / "robo_file" / "_ops" / "gates.sh"
+        if not gates.exists():
+            pytest.skip(f"local gates script not present at {gates}")
+        text = gates.read_text()
+        ci_tools = {t for t, _ in _tool_invocations(wf_flat) if (REPO_ROOT / t).exists()}
+        assert ci_tools, "no existing tools parsed out of CI -- zero-work check"
+        missing = sorted(
+            t
+            for t in ci_tools
+            if t not in text and t not in KNOWN_GATES_SCRIPT_GAPS
+        )
+        assert not missing, (
+            f"{missing} run in CI but are absent from gates.sh -- a local green "
+            "run would not predict the CI verdict. If deliberate, add it to "
+            "KNOWN_GATES_SCRIPT_GAPS with the reason."
+        )
+        healed = sorted(t for t in KNOWN_GATES_SCRIPT_GAPS if t in text)
+        assert not healed, (
+            f"{healed} are now in gates.sh -- drop them from "
+            "KNOWN_GATES_SCRIPT_GAPS so the allowlist does not rot"
+        )
 
 
 class TestNoVersionDrift:
