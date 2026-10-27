@@ -22,8 +22,6 @@
 
 import socket
 
-import pytest
-
 from flagos_robo.runner import utils
 
 
@@ -82,9 +80,7 @@ def test_loopback_from_udp_probe_is_rejected(monkeypatch):
 
 def test_loopback_from_both_probes_falls_back_to_hostname(monkeypatch):
     """两条探测都只有回环地址时，回落到主机名而不是 127.0.0.1。"""
-    _patch_socket(
-        monkeypatch, udp_addr="127.0.0.1", fqdn_addr="127.0.0.1", hostname="only-host"
-    )
+    _patch_socket(monkeypatch, udp_addr="127.0.0.1", fqdn_addr="127.0.0.1", hostname="only-host")
     assert utils.get_addr() == "only-host"
 
 

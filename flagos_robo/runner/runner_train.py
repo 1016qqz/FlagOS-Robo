@@ -29,7 +29,6 @@ from flagos_robo.runner.heartbeat.config import (
 from flagos_robo.runner.runner_base_legacy import JobStatus, RunnerBase
 from flagos_robo.runner.utils import (
     find_latest_stdout_log,
-    flatten_dict_to_args,
     get_free_port,
     get_host_name_or_ip,
     get_nnodes,

@@ -57,7 +57,10 @@ import re
 import sys
 import tempfile
 from pathlib import Path
-from typing import Iterator
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 try:
     from omegaconf import DictConfig, ListConfig, OmegaConf
@@ -135,8 +138,7 @@ def load_composed(conf_path: Path) -> DictConfig:
         gpath = conf_path.parent / group / f"{name}.yaml"
         if not gpath.is_file():
             print(
-                f"check_conf_paths: defaults list names {group}/{name} "
-                f"but {gpath} does not exist",
+                f"check_conf_paths: defaults list names {group}/{name} but {gpath} does not exist",
                 file=sys.stderr,
             )
             raise SystemExit(2)
@@ -208,9 +210,7 @@ def check_conf(conf_path: Path, cfg: DictConfig) -> tuple[list[Violation], list[
             continue
         text = str(value)
         if not text.strip():
-            violations.append(
-                Violation(dotted, text, "resolves to an empty string", env_var)
-            )
+            violations.append(Violation(dotted, text, "resolves to an empty string", env_var))
             continue
         checked.append((dotted, text))
         if not Path(text).exists():
@@ -250,7 +250,9 @@ def run_self_test() -> int:
         v, checked = check_conf(conf, load_composed(conf))
         c1 = (not v) and len(checked) == 2
         ok &= c1
-        print(f"  [{'ok' if c1 else 'FAIL'}] clean conf -> 0 violations, checked {len(checked)} path(s)")
+        print(
+            f"  [{'ok' if c1 else 'FAIL'}] clean conf -> 0 violations, checked {len(checked)} path(s)"
+        )
 
         # case 2: env override to a missing path -> violation naming that path
         os.environ["FLAGOS_TOKENIZER_PATH"] = "/nonexistent/path"
@@ -282,7 +284,9 @@ def run_self_test() -> int:
         except SystemExit as exc:
             c5 = exc.code == 2
         ok &= c5
-        print(f"  [{'ok' if c5 else 'FAIL'}] missing defaults group -> exit 2 (usage, not violation)")
+        print(
+            f"  [{'ok' if c5 else 'FAIL'}] missing defaults group -> exit 2 (usage, not violation)"
+        )
 
     print(f"\nSELF-TEST {'PASSED' if ok else 'FAILED'}")
     return 0 if ok else 1

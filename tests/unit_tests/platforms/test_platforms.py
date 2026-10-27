@@ -31,14 +31,14 @@ import torch
 
 from flagos_robo.platforms import (
     LEGACY_PLATFORM_ENV_VAR,
-    PLATFORMS,
     PLATFORM_ENV_VAR,
+    PLATFORMS,
     PlatformBase,
     get_platform,
+    platform_manager,
     reset_platform,
     set_platform,
 )
-from flagos_robo.platforms import platform_manager
 from flagos_robo.platforms.platform_cuda import PlatformCUDA
 from flagos_robo.platforms.platform_musa import PlatformMUSA
 from flagos_robo.platforms.platform_npu import PlatformNPU
@@ -82,7 +82,8 @@ class TestPlatformContract:
         overridden by every backend, so adding a method to the base without
         implementing it anywhere fails here."""
         missing = _abstract_methods() - {
-            n for n, _ in inspect.getmembers(backend, predicate=inspect.isfunction)
+            n
+            for n, _ in inspect.getmembers(backend, predicate=inspect.isfunction)
             if n in backend.__dict__
         }
         assert missing == set(), f"{backend.__name__} missing {sorted(missing)}"

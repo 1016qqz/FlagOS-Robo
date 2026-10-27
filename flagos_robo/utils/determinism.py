@@ -70,7 +70,10 @@ from __future__ import annotations
 import logging
 import os
 import random
-from collections.abc import Mapping
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +150,7 @@ def strict_determinism_enabled(env: Mapping[str, str] | None = None) -> bool:
     return raw.strip().lower() == DETERMINISM_STRICT_VALUE
 
 
-def seed_worker(worker_id: int) -> None:  # noqa: ARG001 - DataLoader API
+def seed_worker(worker_id: int) -> None:
     """Re-seed a DataLoader worker's Python and NumPy RNGs.
 
     ``torch.manual_seed`` in the parent does not reach these: each worker is a
@@ -213,8 +216,10 @@ def enable_determinism(seed: int, *, warn_only: bool | None = None) -> bool:
             logger.warning(
                 "%s=%r is not one of %s; overriding with %r. If CUDA is "
                 "already initialised this takes effect only next run.",
-                CUBLAS_ENV_VAR, current,
-                sorted(_CUBLAS_ACCEPTED_VALUES), CUBLAS_REQUIRED_VALUE,
+                CUBLAS_ENV_VAR,
+                current,
+                sorted(_CUBLAS_ACCEPTED_VALUES),
+                CUBLAS_REQUIRED_VALUE,
             )
         os.environ[CUBLAS_ENV_VAR] = CUBLAS_REQUIRED_VALUE
 
@@ -228,6 +233,7 @@ def enable_determinism(seed: int, *, warn_only: bool | None = None) -> bool:
     random.seed(seed)
     try:
         import numpy as np
+
         np.random.seed(seed)
     except ImportError:  # pragma: no cover
         pass
@@ -243,6 +249,9 @@ def enable_determinism(seed: int, *, warn_only: bool | None = None) -> bool:
     torch.use_deterministic_algorithms(True, warn_only=warn_only)
     logger.info(
         "Determinism enabled (seed=%d, warn_only=%s, %s=%s)",
-        seed, warn_only, CUBLAS_ENV_VAR, os.environ.get(CUBLAS_ENV_VAR),
+        seed,
+        warn_only,
+        CUBLAS_ENV_VAR,
+        os.environ.get(CUBLAS_ENV_VAR),
     )
     return True

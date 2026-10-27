@@ -36,7 +36,7 @@ TOOL_PATH = REPO_ROOT / "tools" / "compare_precision.py"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from flagos_robo.utils import precision_dump as pd  # noqa: E402
+from flagos_robo.utils import precision_dump as pd
 
 torch = pytest.importorskip("torch", reason="tensor dump path requires torch")
 

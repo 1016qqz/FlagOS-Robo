@@ -154,7 +154,10 @@ def test_gate_message_does_not_name_a_backend():
     """
     config = OmegaConf.create(
         {
-            "experiment": {"runner": {"heartbeat": {"enabled": True}}, "task": {"backend": "native"}},
+            "experiment": {
+                "runner": {"heartbeat": {"enabled": True}},
+                "task": {"backend": "native"},
+            },
             "train": {"system": {"logging": {"log_dir": "/tmp/unused"}}},
         }
     )

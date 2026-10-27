@@ -290,9 +290,11 @@ def _call_lines(tree, name):
         for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         and (
-            node.func.attr if isinstance(node.func, ast.Attribute)
+            node.func.attr
+            if isinstance(node.func, ast.Attribute)
             else getattr(node.func, "id", None)
-        ) == name
+        )
+        == name
     )
 
 
@@ -311,9 +313,11 @@ def _call_source(source, tree, name):
         for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         and (
-            node.func.attr if isinstance(node.func, ast.Attribute)
+            node.func.attr
+            if isinstance(node.func, ast.Attribute)
             else getattr(node.func, "id", None)
-        ) == name
+        )
+        == name
     ]
     assert len(nodes) == 1, f"expected exactly one {name} call, got {len(nodes)}"
     segment = ast.get_source_segment(source, nodes[0])
@@ -409,7 +413,7 @@ def test_dataloader_seeding_is_gated_not_unconditional(entry_point):
     loader = _call_lines(tree, "DataLoader")
     assert len(loader) == 1, f"expected one DataLoader call, got {loader}"
 
-    call = source[source.index("torch.utils.data.DataLoader("):]
+    call = source[source.index("torch.utils.data.DataLoader(") :]
     call = call[: call.index("\n    )") + 6]
     assert "worker_init_fn=seed_worker if" in call, call
     assert "generator=make_dataloader_generator(seed) if" in call, call
@@ -444,8 +448,7 @@ def test_step_log_hook_shares_the_dump_hook_point(entry_point):
     )
     if reset_lines:
         assert log_lines[0] < min(reset_lines), (
-            f"append_step_log at {log_lines[0]} must precede reset_averages() at "
-            f"{min(reset_lines)}"
+            f"append_step_log at {log_lines[0]} must precede reset_averages() at {min(reset_lines)}"
         )
     assert dump_lines[0] < log_lines[0], "keep the two artifacts adjacent and ordered"
 

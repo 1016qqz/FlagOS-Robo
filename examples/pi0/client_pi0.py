@@ -159,7 +159,7 @@ def main() -> int:
 
     try:
         return asyncio.run(infer_once(args))
-    except Exception as exc:  # noqa: BLE001 - a client should report, not traceback
+    except Exception as exc:
         print(f"[Error] {type(exc).__name__}: {exc}")
         return 1
 

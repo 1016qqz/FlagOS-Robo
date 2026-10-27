@@ -104,9 +104,23 @@ def dist_for(module: str) -> str:
 def stdlib_names() -> set[str]:
     names = set(getattr(sys, "stdlib_module_names", set()))
     names |= {
-        "__future__", "dataclasses", "typing", "pathlib", "collections",
-        "concurrent", "importlib", "multiprocessing", "unittest", "logging",
-        "asyncio", "email", "http", "json", "sqlite3", "xml", "ctypes",
+        "__future__",
+        "dataclasses",
+        "typing",
+        "pathlib",
+        "collections",
+        "concurrent",
+        "importlib",
+        "multiprocessing",
+        "unittest",
+        "logging",
+        "asyncio",
+        "email",
+        "http",
+        "json",
+        "sqlite3",
+        "xml",
+        "ctypes",
     }
     return names
 
@@ -119,10 +133,7 @@ def _handles_import_error(node: ast.Try) -> bool:
         if isinstance(exc, ast.Name) and exc.id in _IMPORT_ERROR_NAMES:
             return True
         if isinstance(exc, ast.Tuple):
-            if any(
-                isinstance(e, ast.Name) and e.id in _IMPORT_ERROR_NAMES
-                for e in exc.elts
-            ):
+            if any(isinstance(e, ast.Name) and e.id in _IMPORT_ERROR_NAMES for e in exc.elts):
                 return True
     return False
 
@@ -278,7 +289,9 @@ def scan(repo: Path) -> dict:
         floor = re.search(r">=\s*([0-9][0-9A-Za-z.\-]*)", spec)
         exact = re.search(r"==\s*([0-9][0-9A-Za-z.\-]*)", where.split(": ", 1)[1])
         if floor and exact and _version_tuple(exact.group(1)) < _version_tuple(floor.group(1)):
-            conflict.append(f"{dist}: pinned {exact.group(1)} < pyproject floor {floor.group(1)}  ({where})")
+            conflict.append(
+                f"{dist}: pinned {exact.group(1)} < pyproject floor {floor.group(1)}  ({where})"
+            )
 
     # D2: imported but declared nowhere, minus the vendor allowlist.
     undeclared: list[tuple[str, dict]] = []
@@ -330,48 +343,71 @@ def report(res: dict, repo: Path, quiet: bool = False) -> int:
         )
         return 2
 
-    emit(f"scanned {res['nfiles']} python files, {res['nmodules']} third-party import roots, "
-         f"{len(res['pyproject'])} pyproject dependencies")
+    emit(
+        f"scanned {res['nfiles']} python files, {res['nmodules']} third-party import roots, "
+        f"{len(res['pyproject'])} pyproject dependencies"
+    )
 
-    emit(f"\n[D1] DRIFT / CONFLICT between pyproject and requirements "
-         f"({len(res['drift'])} drift, {len(res['conflict'])} conflict)")
+    emit(
+        f"\n[D1] DRIFT / CONFLICT between pyproject and requirements "
+        f"({len(res['drift'])} drift, {len(res['conflict'])} conflict)"
+    )
     for line in res["drift"]:
         emit(f"    DRIFT     {line}")
     for line in res["conflict"]:
         emit(f"    CONFLICT  {line}")
 
-    emit(f"\n[D2] imports declared in no requirements file "
-         f"({len(res['allowed_hits'])} allowlisted, {len(res['undeclared'])} NOT allowlisted)")
+    emit(
+        f"\n[D2] imports declared in no requirements file "
+        f"({len(res['allowed_hits'])} allowlisted, {len(res['undeclared'])} NOT allowlisted)"
+    )
     for mod in res["allowed_hits"]:
         emit(f"    allowed   {mod:18s} {ALLOWED_UNDECLARED_IMPORTS[mod]}")
     for mod, info in res["undeclared"]:
         tag = "guarded" if info["guarded_only"] else "HARD"
-        emit(f"    UNDECLARED {mod:17s} dist={dist_for(mod):22s} {tag}, {len(info['sites'])} site(s)")
+        emit(
+            f"    UNDECLARED {mod:17s} dist={dist_for(mod):22s} {tag}, {len(info['sites'])} site(s)"
+        )
         for site in info["sites"][:3]:
             emit(f"               {site}")
 
-    emit(f"\n[D3] optional-only dependencies imported with no guard "
-         f"({len(res['unguarded_optional'])})")
+    emit(
+        f"\n[D3] optional-only dependencies imported with no guard "
+        f"({len(res['unguarded_optional'])})"
+    )
     for mod, info in res["unguarded_optional"]:
         emit(f"    UNGUARDED {mod:18s} dist={dist_for(mod):18s} {len(info['sites'])} site(s)")
         for site in info["sites"][:5]:
             emit(f"              {site}")
 
-    emit(f"\n[report] declared for runtime but never imported ({len(res['unused'])}) "
-         f"-- transitive deps live here, not gated")
+    emit(
+        f"\n[report] declared for runtime but never imported ({len(res['unused'])}) "
+        f"-- transitive deps live here, not gated"
+    )
     for dist in res["unused"]:
         emit(f"    unused?   {dist:22s} {res['runtime'][dist]}")
 
-    hard = len(res["drift"]) + len(res["conflict"]) + len(res["undeclared"]) + len(res["unguarded_optional"])
+    hard = (
+        len(res["drift"])
+        + len(res["conflict"])
+        + len(res["undeclared"])
+        + len(res["unguarded_optional"])
+    )
     if hard:
-        emit(f"\nFAIL(1): {len(res['drift'])} drift, {len(res['conflict'])} conflict, "
-             f"{len(res['undeclared'])} undeclared, {len(res['unguarded_optional'])} unguarded-optional")
+        emit(
+            f"\nFAIL(1): {len(res['drift'])} drift, {len(res['conflict'])} conflict, "
+            f"{len(res['undeclared'])} undeclared, {len(res['unguarded_optional'])} unguarded-optional"
+        )
         if res["undeclared"]:
-            emit("    Declare it in the right requirements file, or -- if it ships inside a\n"
-                 "    vendor image -- add it to ALLOWED_UNDECLARED_IMPORTS with the reason.")
+            emit(
+                "    Declare it in the right requirements file, or -- if it ships inside a\n"
+                "    vendor image -- add it to ALLOWED_UNDECLARED_IMPORTS with the reason."
+            )
         if res["unguarded_optional"]:
-            emit("    Either promote it out of optional.txt, or wrap the import in\n"
-                 "    try/except ImportError or an importlib.util.find_spec() probe.")
+            emit(
+                "    Either promote it out of optional.txt, or wrap the import in\n"
+                "    try/except ImportError or an importlib.util.find_spec() probe."
+            )
         return 1
     emit("\nCLEAN: declarations agree with imports; no undeclared or mislabeled dependencies.")
     return 0
@@ -389,21 +425,21 @@ def report(res: dict, repo: Path, quiet: bool = False) -> int:
 # The two guard idioms below are both in use here, so both must stay green: a
 # gate that only understood try/except would flag video_utils.py, which is
 # correct code -- and a gate that flags correct code gets deleted.
-_NEG_GUARD_TRY_EXCEPT = '''\
+_NEG_GUARD_TRY_EXCEPT = """\
 try:
     from flash_attn import flash_attn_func
 except ImportError:
     flash_attn_func = None
-'''
+"""
 
-_NEG_GUARD_FIND_SPEC = '''\
+_NEG_GUARD_FIND_SPEC = """\
 import importlib.util
 
 if importlib.util.find_spec("torchcodec"):
     from torchcodec.decoders import VideoDecoder
 else:
     raise ImportError("torchcodec is required but not available.")
-'''
+"""
 
 _NEG_VENDOR_ALLOWLISTED = "import torch_npu\n"
 
@@ -415,12 +451,12 @@ _POS_OPTIONAL_UNGUARDED_SPEC = "from torchcodec.decoders import VideoDecoder\n"
 
 _POS_UNDECLARED_HARD = "import some_absent_optional_pkg_xyz\n"
 
-_POS_UNDECLARED_GUARDED = '''\
+_POS_UNDECLARED_GUARDED = """\
 try:
     import another_absent_pkg_xyz
 except ImportError:
     another_absent_pkg_xyz = None
-'''
+"""
 
 
 def _run_case(root: Path, rel: str, text: str) -> int:
@@ -487,9 +523,10 @@ def _move_hard_dep_to_optional(root: Path) -> dict[Path, str]:
         for line in text.splitlines():
             if re.match(r"(?i)^av\s*==", line.strip()):
                 moved = line.strip()
-        new = "\n".join(
-            ln for ln in text.splitlines() if not re.match(r"(?i)^av\s*==", ln.strip())
-        ) + "\n"
+        new = (
+            "\n".join(ln for ln in text.splitlines() if not re.match(r"(?i)^av\s*==", ln.strip()))
+            + "\n"
+        )
         if new != text:
             out[path] = new
     if moved and optional.is_file():
@@ -565,7 +602,9 @@ def run_self_test(repo: Path) -> int:
         (empty / "flagos_robo").mkdir(parents=True)
         rc = report(scan(empty), empty, quiet=True)
         ok = rc == 2
-        print(f"  [rc2  ] {'empty tree scans nothing':<42} RC={rc} (expect 2) {'ok' if ok else 'BAD'}")
+        print(
+            f"  [rc2  ] {'empty tree scans nothing':<42} RC={rc} (expect 2) {'ok' if ok else 'BAD'}"
+        )
         if not ok:
             failures.append("an empty tree did not produce RC=2; RC=0 could mean no work")
 
@@ -583,8 +622,11 @@ def main(argv: list[str] | None = None) -> int:
         description="Gate dependency declarations against the imports in flagos_robo/.",
     )
     parser.add_argument("root", nargs="?", default=".", help="repo root (default: cwd)")
-    parser.add_argument("--self-test", action="store_true",
-                        help="verify the gate itself: correct code green, defects red")
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        help="verify the gate itself: correct code green, defects red",
+    )
     parser.add_argument("--quiet", action="store_true", help="exit code only")
     args = parser.parse_args(argv)
 

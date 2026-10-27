@@ -29,7 +29,7 @@ import pytest
 TOOL = Path(__file__).resolve().parents[3] / "tools" / "check_no_megatron.py"
 sys.path.insert(0, str(TOOL.parent))
 
-import check_no_megatron as cnm  # noqa: E402
+import check_no_megatron as cnm
 
 
 @pytest.fixture
@@ -90,7 +90,11 @@ class TestL1Imports:
 class TestL2CodeText:
     def test_detects_dynamic_import_string(self, repo):
         """The blind spot L1 structurally cannot see."""
-        _w(repo, "flagos_robo/m.py", 'import importlib\nm = importlib.import_module("megatron.core.foo")\n')
+        _w(
+            repo,
+            "flagos_robo/m.py",
+            'import importlib\nm = importlib.import_module("megatron.core.foo")\n',
+        )
         assert cnm.check_l1_imports(repo) == []
         assert len(cnm.check_l2_code_text(repo)) >= 1
 
@@ -264,7 +268,9 @@ class TestCLI:
         assert "PASS" in r.stdout
 
     def test_self_test_passes(self):
-        r = subprocess.run([sys.executable, str(TOOL), "--self-test"], capture_output=True, text=True)
+        r = subprocess.run(
+            [sys.executable, str(TOOL), "--self-test"], capture_output=True, text=True
+        )
         assert r.returncode == 0, r.stdout + r.stderr
         assert "SELF-TEST PASSED" in r.stdout
 

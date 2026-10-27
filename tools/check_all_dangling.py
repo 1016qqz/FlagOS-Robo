@@ -15,6 +15,7 @@
       python3 tools/check_all_dangling.py --self-test
 退出码：发现悬挂 -> 1；干净 -> 0；扫到 0 个文件 -> 2（防「零扫描假通过」）
 """
+
 import argparse
 import ast
 import os
@@ -123,9 +124,7 @@ def scan_tree(root):
     findings = []
 
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [
-            d for d in dirnames if d not in _PRUNE
-        ]
+        dirnames[:] = [d for d in dirnames if d not in _PRUNE]
         for name in sorted(filenames):
             if not name.endswith(".py"):
                 continue
@@ -179,37 +178,37 @@ def report(root):
 # 每个 case 在 temp 目录造一个合成模块，再以子进程重入本脚本，断言：
 # 已知阳性必须被抓到（RC=1 且点名那个符号），已知阴性必须不报（RC=0）。
 
-_POSITIVE = '''
+_POSITIVE = """
 try:
     from .pi0 import PI0Policy
 except ImportError:
     pass
 
 __all__ = ["PI0Policy"]
-'''
+"""
 
-_NEG_FALLBACK = '''
+_NEG_FALLBACK = """
 try:
     from .pi0 import PI0Policy
 except ImportError:
     PI0Policy = None
 
 __all__ = ["PI0Policy"]
-'''
+"""
 
-_NEG_PLAIN = '''
+_NEG_PLAIN = """
 class RealClass:
     pass
 
 __all__ = ["RealClass"]
-'''
+"""
 
-_NEG_NO_ALL = '''
+_NEG_NO_ALL = """
 try:
     from .pi0 import PI0Policy
 except ImportError:
     pass
-'''
+"""
 
 _CASES = [
     ("阳性：try 内绑定 + 列进 __all__ 必须被抓到", _POSITIVE, 1, "PI0Policy"),
@@ -226,9 +225,7 @@ def run_self_test():
         tmp = Path(tempfile.mkdtemp(prefix="dangling-"))
         try:
             (tmp / "mod.py").write_text(body, encoding="utf-8")
-            proc = subprocess.run(
-                [sys.executable, me, str(tmp)], capture_output=True, text=True
-            )
+            proc = subprocess.run([sys.executable, me, str(tmp)], capture_output=True, text=True)
             out = proc.stdout + proc.stderr
             if proc.returncode != want_rc:
                 failures.append(f"{title}: rc={proc.returncode} 期望 {want_rc}")
@@ -262,9 +259,7 @@ def run_self_test():
             nested = tmp / subdir / "FlagScale" / "pkg"
             nested.mkdir(parents=True)
             (nested / "__init__.py").write_text(_POSITIVE, encoding="utf-8")
-            proc = subprocess.run(
-                [sys.executable, me, str(tmp)], capture_output=True, text=True
-            )
+            proc = subprocess.run([sys.executable, me, str(tmp)], capture_output=True, text=True)
             if proc.returncode != want_rc:
                 failures.append(
                     f"_ci 剪枝（{label} {subdir}/）: rc={proc.returncode} 期望 {want_rc}"

@@ -49,6 +49,7 @@ from flagos_robo.train.processor.pipeline import (
 # name, hence the only one whose round-trip goes through dynamic import.
 UNREGISTERED_STEP = IdentityProcessorStep
 
+
 # A subclass of a *registered* step, itself never registered -- defined with a
 # real class statement at module level so that ``__module__`` points at this
 # test module, the way a user-defined subclass behaves. (Building it with
@@ -115,9 +116,9 @@ class TestMultiStageConfigInstantiatesEveryStage:
         assert "class" in cfg["steps"][3], "the 4th stage must use the import tier"
 
         back = DataProcessorPipeline.from_pretrained(tmp_path, config_filename="multi.json")
-        assert [type(s) for s in back.steps] == expected + [
-            UNREGISTERED_STEP
-        ], "reloaded stage types or their order do not match the saved config"
+        assert [type(s) for s in back.steps] == [*expected, UNREGISTERED_STEP], (
+            "reloaded stage types or their order do not match the saved config"
+        )
 
     def test_the_stages_span_more_than_one_source_module(self):
         """If every stage came from pipeline.py the test would not exercise

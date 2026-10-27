@@ -35,21 +35,22 @@ def _detect_version() -> str:
     3. a hardcoded fallback.
     """
     try:
-        from importlib.metadata import PackageNotFoundError, version
+        from importlib.metadata import version
 
         return version("flagos-robo")
-    except Exception:  # noqa: BLE001 - metadata absent in a bare checkout
+    except Exception:
         pass
 
     try:
         import pathlib
+
         import tomllib
 
         pyproject = pathlib.Path(__file__).resolve().parent.parent / "pyproject.toml"
         if pyproject.is_file():
             with pyproject.open("rb") as handle:
                 return tomllib.load(handle)["project"]["version"]
-    except Exception:  # noqa: BLE001 - keep import side-effect free
+    except Exception:
         pass
 
     return _FALLBACK_VERSION

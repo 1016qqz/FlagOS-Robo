@@ -38,7 +38,7 @@ TOOL = REPO_ROOT / "tools" / "compare_precision.py"
 
 sys.path.insert(0, str(TOOL.parent))
 
-import compare_precision as cp  # noqa: E402
+import compare_precision as cp
 
 
 def run_tool(*args: str) -> subprocess.CompletedProcess:
@@ -193,10 +193,7 @@ class TestL2Triage:
         assert cp.classify_difference("layernorm_epsilon") == cp.SEMANTIC_DIFFERENT
 
     def test_distributed_optimizer_is_math_equivalent(self):
-        assert (
-            cp.classify_difference("use_distributed_optimizer")
-            == cp.MATH_EQUIVALENT
-        )
+        assert cp.classify_difference("use_distributed_optimizer") == cp.MATH_EQUIVALENT
 
     def test_flash_attn_is_numeric_different(self):
         assert cp.classify_difference("use_flash_attn") == cp.NUMERIC_DIFFERENT
@@ -207,9 +204,13 @@ class TestL2Triage:
         assert cp.classify_difference("some.novel_flag") == cp.SEMANTIC_DIFFERENT
 
     def test_math_equivalent_is_a_note_not_a_finding(self):
-        a = {"use_distributed_optimizer": False, "global_batch_size": 8,
-             "micro_batch_size": 2, "data_parallel_size": 4,
-             "gradient_accumulation_steps": 1}
+        a = {
+            "use_distributed_optimizer": False,
+            "global_batch_size": 8,
+            "micro_batch_size": 2,
+            "data_parallel_size": 4,
+            "gradient_accumulation_steps": 1,
+        }
         b = dict(a, use_distributed_optimizer=True)
         res = cp.compare_config(a, b)
         assert res.ok, res.render()
@@ -218,9 +219,13 @@ class TestL2Triage:
     def test_numeric_different_is_a_finding_in_this_scenario(self):
         """Identical code on identical hardware must not pick a different
         kernel, so a numeric-different delta is a defect here."""
-        a = {"use_flash_attn": False, "global_batch_size": 8,
-             "micro_batch_size": 2, "data_parallel_size": 4,
-             "gradient_accumulation_steps": 1}
+        a = {
+            "use_flash_attn": False,
+            "global_batch_size": 8,
+            "micro_batch_size": 2,
+            "data_parallel_size": 4,
+            "gradient_accumulation_steps": 1,
+        }
         b = dict(a, use_flash_attn=True)
         assert not cp.compare_config(a, b).ok
 
@@ -356,9 +361,7 @@ class TestLossSeriesFormats:
 
     def test_lm_loss_alias(self, tmp_path):
         p = tmp_path / "l.json"
-        p.write_text(
-            json.dumps([{"iteration": 7, "lm_loss": 3.25}]), encoding="utf-8"
-        )
+        p.write_text(json.dumps([{"iteration": 7, "lm_loss": 3.25}]), encoding="utf-8")
         assert cp.load_loss_series(p) == {7: 3.25}
 
 

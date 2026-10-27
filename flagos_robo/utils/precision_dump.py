@@ -55,7 +55,10 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping
 
 __all__ = [
     "DEFAULT_LOSS_FILENAME",

@@ -36,9 +36,7 @@ def wf_text() -> str:
 def wf_flat(wf_text: str) -> str:
     """Line continuations joined, comment lines dropped."""
     flat = wf_text.replace("\\\n", " ")
-    return "\n".join(
-        ln for ln in flat.splitlines() if not ln.lstrip().startswith("#")
-    )
+    return "\n".join(ln for ln in flat.splitlines() if not ln.lstrip().startswith("#"))
 
 
 def _tool_invocations(flat: str):
@@ -210,11 +208,7 @@ class TestEveryGateIsWired:
         text = GATES_SCRIPT.read_text()
         ci_tools = {t for t, _ in _tool_invocations(wf_flat) if (REPO_ROOT / t).exists()}
         assert ci_tools, "no existing tools parsed out of CI -- zero-work check"
-        missing = sorted(
-            t
-            for t in ci_tools
-            if t not in text and t not in KNOWN_GATES_SCRIPT_GAPS
-        )
+        missing = sorted(t for t in ci_tools if t not in text and t not in KNOWN_GATES_SCRIPT_GAPS)
         assert not missing, (
             f"{missing} run in CI but are absent from gates.sh -- a local green "
             "run would not predict the CI verdict. If deliberate, add it to "

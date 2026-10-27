@@ -49,9 +49,9 @@ def _get_transformation_registry() -> dict[str, type[Transformation]]:
         except ImportError:
             pass
         else:
-            _TRANSFORMATION_REGISTRY[
-                "TimestepTrackerTransformation"
-            ] = TimestepTrackerTransformation
+            _TRANSFORMATION_REGISTRY["TimestepTrackerTransformation"] = (
+                TimestepTrackerTransformation
+            )
 
     if "TaylorSeerTransformation" not in _TRANSFORMATION_REGISTRY:
         try:

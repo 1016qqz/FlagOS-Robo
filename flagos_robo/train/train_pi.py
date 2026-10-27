@@ -16,42 +16,52 @@
 # https://github.com/huggingface/lerobot/blob/2b304eeb841ae6c371e3dd341bbbb9dd254b07cb/src/lerobot/scripts/lerobot_train.py
 
 import argparse
-import json
-from pathlib import Path
-from typing import Any, Iterator, TypedDict
 import os
-import pathlib
 import random
-from typing_extensions import Unpack
 import time
+from collections.abc import Iterator
 from contextlib import nullcontext
+from pathlib import Path
+from typing import Any, TypedDict
 
-from omegaconf import OmegaConf
 import numpy as np
 import torch
 import torch.distributed as dist
-from torch.optim import Optimizer
-from torch.optim.lr_scheduler import LambdaLR
-from torch.distributed.fsdp import (
-    FullyShardedDataParallel as FSDP,
-    ShardingStrategy,
-    MixedPrecision,
-    fully_shard,
-    MixedPrecisionPolicy,
-)
+from omegaconf import OmegaConf
 from torch.distributed.checkpoint.state_dict import (
+    StateDictOptions,
     get_model_state_dict,
     get_optimizer_state_dict,
-    StateDictOptions,
 )
+from torch.distributed.fsdp import (
+    FullyShardedDataParallel as FSDP,
+    MixedPrecision,
+    MixedPrecisionPolicy,
+    ShardingStrategy,
+    fully_shard,
+)
+from torch.optim import Optimizer
+from typing_extensions import Unpack
 
 from flagos_robo.logger import logger
-from flagos_robo.train.train_config import TrainConfig, DataConfig
-from flagos_robo.train.datasets.transforms import ImageTransforms
+from flagos_robo.models.configs.types import FeatureType, PolicyFeature
+from flagos_robo.models.pi0.configuration_pi0 import PI0Config
+from flagos_robo.models.pi0.modeling_pi0 import PI0Policy
+from flagos_robo.models.pi05.configuration_pi05 import PI05Config
+from flagos_robo.models.pi05.modeling_pi05 import PI05Policy
+from flagos_robo.models.utils.constants import (
+    ACTION,
+    OBS_PREFIX,
+    POLICY_POSTPROCESSOR_DEFAULT_NAME,
+    POLICY_PREPROCESSOR_DEFAULT_NAME,
+    REWARD,
+)
+from flagos_robo.platforms import get_platform
 from flagos_robo.train.datasets.lerobot_dataset import (
     LeRobotDataset,
     LeRobotDatasetMetadata,
 )
+from flagos_robo.train.datasets.transforms import ImageTransforms
 from flagos_robo.train.datasets.utils import dataset_to_policy_features
 from flagos_robo.train.processor import PolicyAction, PolicyProcessorPipeline
 from flagos_robo.train.processor.converters import (
@@ -60,42 +70,31 @@ from flagos_robo.train.processor.converters import (
     transition_to_batch,
     transition_to_policy_action,
 )
-from flagos_robo.models.utils.constants import (
-    POLICY_POSTPROCESSOR_DEFAULT_NAME,
-    POLICY_PREPROCESSOR_DEFAULT_NAME,
-)
-from flagos_robo.models.configs.types import PolicyFeature
-from flagos_robo.models.utils.constants import ACTION, OBS_PREFIX, REWARD
-from flagos_robo.models.configs.types import FeatureType
-from flagos_robo.models.pi0.configuration_pi0 import PI0Config
-from flagos_robo.models.pi0.modeling_pi0 import PI0Policy
-from flagos_robo.models.pi05.configuration_pi05 import PI05Config
-from flagos_robo.models.pi05.modeling_pi05 import PI05Policy
+from flagos_robo.train.train_config import DataConfig, TrainConfig
 from flagos_robo.train.utils.logging_utils import AverageMeter, MetricsTracker
 from flagos_robo.train.utils.optim_setup import CosineDecayWithWarmupSchedulerConfig
+from flagos_robo.train.utils.random_utils import deserialize_rng_state, serialize_rng_state
 from flagos_robo.train.utils.train_utils import (
     StatefulDistributedSampler,
     consumed_indices_for_step,
+    get_step_checkpoint_dir,
     load_training_state_fsdp2,
     replay_dataloader_to_step,
     save_checkpoint,
     save_rng_state_only,
-    get_step_checkpoint_dir,
     update_last_checkpoint,
-)
-from flagos_robo.train.utils.random_utils import serialize_rng_state, deserialize_rng_state
-from flagos_robo.platforms import get_platform
-from flagos_robo.utils.precision_dump import (
-    append_step_log,
-    dump_dir_from_env,
-    dump_step,
-    step_log_dir_from_env,
 )
 from flagos_robo.utils.determinism import (
     determinism_enabled,
     enable_determinism,
     make_dataloader_generator,
     seed_worker,
+)
+from flagos_robo.utils.precision_dump import (
+    append_step_log,
+    dump_dir_from_env,
+    dump_step,
+    step_log_dir_from_env,
 )
 
 IMAGENET_STATS = {
@@ -112,14 +111,16 @@ def set_seed(seed: int):
     if get_platform().name() == "cuda":
         torch.backends.cudnn.enabled = True
         torch.backends.cudnn.benchmark = False
-        torch.backends.cudnn.deterministic = False 
+        torch.backends.cudnn.deterministic = False
         torch.backends.cuda.matmul.allow_tf32 = False
 
 
 def init_distributed():
     local_rank = int(os.environ.get("LOCAL_RANK", 0))
     get_platform().set_device(local_rank)
-    torch.distributed.init_process_group(backend=get_platform().dist_backend(), init_method="env://")
+    torch.distributed.init_process_group(
+        backend=get_platform().dist_backend(), init_method="env://"
+    )
 
     return local_rank
 
@@ -197,9 +198,7 @@ def make_dataset(cfg: DataConfig, policy_config):
     # TODO: (yupu) Remove hard-coded video backend
     video_backend = "torchcodec"
 
-    image_transforms = (
-        ImageTransforms(cfg.image_transforms) if enable_image_transform else None
-    )
+    image_transforms = ImageTransforms(cfg.image_transforms) if enable_image_transform else None
     # Leave the revision to None
     ds_meta = LeRobotDatasetMetadata(root=cfg.data_path, revision=None)
     delta_timestamps = resolve_delta_timestamps(policy_config, ds_meta)
@@ -217,16 +216,12 @@ def make_dataset(cfg: DataConfig, policy_config):
     if cfg.use_imagenet_stats:
         for key in dataset.meta.camera_keys:
             for stats_type, stats in IMAGENET_STATS.items():
-                dataset.meta.stats[key][stats_type] = torch.tensor(
-                    stats, dtype=torch.float32
-                )
+                dataset.meta.stats[key][stats_type] = torch.tensor(stats, dtype=torch.float32)
 
     return dataset
 
 
-def resolve_delta_timestamps(
-    cfg, ds_meta: LeRobotDatasetMetadata
-) -> dict[str, list] | None:
+def resolve_delta_timestamps(cfg, ds_meta: LeRobotDatasetMetadata) -> dict[str, list] | None:
     """Resolves delta_timestamps by reading from the 'delta_indices' properties of the PreTrainedConfig.
 
     Args:
@@ -249,9 +244,7 @@ def resolve_delta_timestamps(
         if key == ACTION and cfg.action_delta_indices is not None:
             delta_timestamps[key] = [i / ds_meta.fps for i in cfg.action_delta_indices]
         if key.startswith(OBS_PREFIX) and cfg.observation_delta_indices is not None:
-            delta_timestamps[key] = [
-                i / ds_meta.fps for i in cfg.observation_delta_indices
-            ]
+            delta_timestamps[key] = [i / ds_meta.fps for i in cfg.observation_delta_indices]
 
     if len(delta_timestamps) == 0:
         delta_timestamps = None
@@ -314,9 +307,7 @@ def validate_visual_features_consistency(
         cfg (PreTrainedConfig): The model or policy configuration containing input_features and type.
         features (Dict[str, PolicyFeature]): A mapping of feature names to PolicyFeature objects.
     """
-    expected_visuals = {
-        k for k, v in cfg.input_features.items() if v.type == FeatureType.VISUAL
-    }
+    expected_visuals = {k for k, v in cfg.input_features.items() if v.type == FeatureType.VISUAL}
     provided_visuals = {k for k, v in features.items() if v.type == FeatureType.VISUAL}
     if not provided_visuals.issubset(expected_visuals):
         raise_feature_mismatch_error(provided_visuals, expected_visuals)
@@ -503,9 +494,13 @@ def update_policy(
     policy_model = policy.module if isinstance(policy, FSDP) else policy
     use_amp = getattr(policy_model.config, "use_amp", False)
 
-    autocast_context = torch.amp.autocast(get_platform().amp_device_type(), dtype=torch.bfloat16) if use_amp else nullcontext()
+    autocast_context = (
+        torch.amp.autocast(get_platform().amp_device_type(), dtype=torch.bfloat16)
+        if use_amp
+        else nullcontext()
+    )
     with autocast_context:
-        loss, _= policy(batch)
+        loss, _ = policy(batch)
     # TODO(rcadene): policy.unnormalize_outputs(out_dict)
 
     loss.backward()
@@ -561,9 +556,7 @@ def main(config: TrainConfig, seed: int):
 
     model_name = config.model.model_name.lower()
     if model_name not in ["pi0", "pi0.5"]:
-        raise ValueError(
-            f"Invalid model_name: {model_name}. Must be 'pi0' or 'pi0.5'"
-        )
+        raise ValueError(f"Invalid model_name: {model_name}. Must be 'pi0' or 'pi0.5'")
 
     # Load base config from checkpoint
     if model_name == "pi0.5":
@@ -753,7 +746,10 @@ def main(config: TrainConfig, seed: int):
         # set_model_state_dict / set_optimizer_state_dict, which are
         # collectives -- every rank must reach them or the job hangs.
         step, dl_state = load_training_state_fsdp2(
-            Path(resume_from), policy, optimizer, lr_scheduler,
+            Path(resume_from),
+            policy,
+            optimizer,
+            lr_scheduler,
         )
         if dl_state is not None and hasattr(dataloader.sampler, "load_state_dict"):
             # Preferred path: the sampler recorded how far into the epoch it
@@ -776,9 +772,7 @@ def main(config: TrainConfig, seed: int):
             #     same boundaries the training loop below does, and returns the
             #     epoch to continue from.
             saved_rng = serialize_rng_state()
-            epoch = replay_dataloader_to_step(
-                dl_iter, dataloader.sampler, step, samples_per_epoch
-            )
+            epoch = replay_dataloader_to_step(dl_iter, dataloader.sampler, step, samples_per_epoch)
             deserialize_rng_state(saved_rng)
         logger.info(f"Resumed from checkpoint at step {step} (epoch {epoch})")
 
@@ -872,7 +866,10 @@ def main(config: TrainConfig, seed: int):
         if step % config.system.log_freq == 0 and is_main_process:
             logger.info(f"step: {step} loss: {train_tracker}")
 
-        if config.system.checkpoint.save_checkpoint and step % config.system.checkpoint.save_freq == 0:
+        if (
+            config.system.checkpoint.save_checkpoint
+            and step % config.system.checkpoint.save_freq == 0
+        ):
             dist.barrier()
             # Both gathers are collectives -- every rank must call them, so
             # they stay above the is_main_process guard.
@@ -886,9 +883,7 @@ def main(config: TrainConfig, seed: int):
             # Computed on every rank, not just the main one: the non-main ranks
             # need the same directory to deposit their own RNG files below.
             output_dir = Path(config.system.checkpoint.output_directory)
-            checkpoint_dir = get_step_checkpoint_dir(
-                output_dir, config.system.train_steps, step
-            )
+            checkpoint_dir = get_step_checkpoint_dir(output_dir, config.system.train_steps, step)
             if is_main_process:
                 logger.info(f"Saving checkpoint at step {step}")
                 save_checkpoint(
@@ -908,9 +903,7 @@ def main(config: TrainConfig, seed: int):
                     # the resumed run skip that many batches. See
                     # StatefulDistributedSampler's docstring.
                     dataloader_state=dataloader.sampler.state_dict(
-                        consumed_indices_for_step(
-                            step, len(dataloader), config.system.batch_size
-                        )
+                        consumed_indices_for_step(step, len(dataloader), config.system.batch_size)
                     )
                     if hasattr(dataloader.sampler, "state_dict")
                     else None,
@@ -950,7 +943,7 @@ if __name__ == "__main__":
 
     # Extract experiment config (seed, exp_dir, etc.)
     experiment_config = OmegaConf.to_container(config.experiment, resolve=True)
-    seed = experiment_config.get('seed', 42)
+    seed = experiment_config.get("seed", 42)
 
     logger.info("=" * 100)
     logger.info(f"Experiment: {experiment_config}")

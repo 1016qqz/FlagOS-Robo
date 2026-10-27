@@ -21,8 +21,8 @@ exactly that::
 
     cur_platform = _cur_platform()
     ...
-    cur_platform.get_rng_state()      # line 125
-    cur_platform.set_rng_state(...)   # line 136
+    cur_platform.get_rng_state()  # line 125
+    cur_platform.set_rng_state(...)  # line 136
 
 (W6 made that binding lazy -- it was a module-level
 ``cur_platform = get_platform()`` resolved at import, which no accelerator-less

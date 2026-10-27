@@ -22,10 +22,6 @@ import numpy as np
 import torch
 from omegaconf import DictConfig, ListConfig, OmegaConf
 
-import flagos_robo.serve.processor  # noqa: F401 — registers serve-specific processor steps
-from flagos_robo.logger import logger
-from flagos_robo.platforms import get_platform  # noqa: F401 must be before model imports
-
 # TrainablePolicy / PreTrainedConfig dispatch is registry-based: a type is only
 # resolvable after its module has been imported, because registration happens in
 # ``__init_subclass__``. flagos_robo/models/vla/__init__.py deliberately does NOT
@@ -36,8 +32,8 @@ from flagos_robo.platforms import get_platform  # noqa: F401 must be before mode
 # side-effect imports below. Without them, serving a pi0 checkpoint dies in
 # PreTrainedConfig.from_pretrained with:
 #   ValueError: Unknown config type 'pi0'. Known types: ['Gr00tN15']
-import flagos_robo.models.pi0  # noqa: E402,F401 — registers PI0Config / PI0Policy
-import flagos_robo.models.pi05  # noqa: E402,F401 — registers PI05Config / PI05Policy
+import flagos_robo.models.pi0
+import flagos_robo.models.pi05
 
 # Same registry story one level down, for processor steps rather than policies: the
 # GR00T-specific steps (groot_pack_inputs / groot_eagle_encode / groot_eagle_collate /
@@ -47,10 +43,13 @@ import flagos_robo.models.pi05  # noqa: E402,F401 — registers PI05Config / PI0
 # train_gr00t_n1_5.py carries this same side-effect import; without it here, serving a
 # GR00T checkpoint dies in PolicyProcessorPipeline.from_pretrained with:
 #   KeyError: "Processor step 'groot_pack_inputs' not found in registry"
-import flagos_robo.models.vla.gr00t_n1_5.processor_gr00t  # noqa: E402,F401
-from flagos_robo.models.utils.constants import ACTION, OBS_IMAGES, OBS_STATE  # noqa: E402
-from flagos_robo.models.vla import TrainablePolicy  # noqa: E402
-from flagos_robo.models.vla.pretrained_config import PreTrainedConfig  # noqa: E402
+import flagos_robo.models.vla.gr00t_n1_5.processor_gr00t
+import flagos_robo.serve.processor  # noqa: F401 — registers serve-specific processor steps
+from flagos_robo.logger import logger
+from flagos_robo.models.utils.constants import ACTION, OBS_IMAGES, OBS_STATE
+from flagos_robo.models.vla import TrainablePolicy
+from flagos_robo.models.vla.pretrained_config import PreTrainedConfig
+from flagos_robo.platforms import get_platform  # noqa: F401 must be before model imports
 from flagos_robo.serve.processor.image_layout_processor import ImageLayoutProcessorStep
 from flagos_robo.serve.processor.image_resize_processor import ImageResizeProcessorStep
 from flagos_robo.serve.processor.numpy_to_tensor_processor import NumpyToTensorProcessorStep

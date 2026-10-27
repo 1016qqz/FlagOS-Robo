@@ -47,7 +47,6 @@ import sys
 import warnings
 
 import hydra
-
 from omegaconf import DictConfig, OmegaConf
 from omegaconf.errors import OmegaConfBaseException
 

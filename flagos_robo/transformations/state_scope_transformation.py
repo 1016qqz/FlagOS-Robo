@@ -31,6 +31,8 @@ except ImportError:
     def current_ctx():  # type: ignore[misc]
         """No runtime-context provider is migrated; there is never a context."""
         return None
+
+
 from flagos_robo.transformations.hook import ModelHook, ModuleHookRegistry
 from flagos_robo.transformations.transformation import Transformation
 

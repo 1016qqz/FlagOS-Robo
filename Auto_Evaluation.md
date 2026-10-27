@@ -41,7 +41,7 @@ Auto-Evaluation is a multi-chip adaptive model automatic evaluation tool built o
 
 ##### header
     ```json
-    "Content-Type": "application/json" 
+    "Content-Type": "application/json"
     ```
 ##### body:
 
@@ -88,7 +88,7 @@ Note: As model evaluation takes a long time, the interface temporarily returns t
 ##### header
 
     ```bash
-    "Content-Type": "application/json" 
+    "Content-Type": "application/json"
     ```
 
 ##### body:
@@ -135,7 +135,7 @@ Detail Data Structure
 
 
     ```bash
-    "Content-Type": "application/json" 
+    "Content-Type": "application/json"
     ```
 
 
@@ -160,7 +160,7 @@ Detail Data Structure
 ##### header
 
     ```bash
-    "Content-Type": "application/json" 
+    "Content-Type": "application/json"
     ```
 
 
@@ -184,7 +184,7 @@ Detail Data Structure
 ##### header
 
     ```bash
-    "Content-Type": "application/json" 
+    "Content-Type": "application/json"
     ```
 
 
@@ -214,7 +214,7 @@ Detail Data Structure
 ##### header
 
     ```bash
-    "Content-Type": "application/json" 
+    "Content-Type": "application/json"
     ```
 
 

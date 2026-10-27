@@ -36,10 +36,8 @@ bridges typer to Hydra -- stays recognisable.
 """
 
 import sys
-
 from enum import Enum
 from pathlib import Path
-from typing import List, Optional
 
 import typer
 
@@ -58,7 +56,7 @@ app = typer.Typer(
 
 
 def resolve_config(
-    model_name: str, yaml_path: Optional[Path], task: str = "train"
+    model_name: str, yaml_path: Path | None, task: str = "train"
 ) -> "tuple[str, str]":
     """Resolve config path and name from ``model_name`` or ``yaml_path``.
 
@@ -96,7 +94,7 @@ def _handle_config_error(error: Exception, config_path: str, config_name: str) -
 
 
 def run_task(
-    config_path: str, config_name: str, action: str, extra_args: Optional[list] = None
+    config_path: str, config_name: str, action: str, extra_args: list | None = None
 ) -> None:
     """Execute a task via :mod:`flagos_robo.run`.
 
@@ -158,7 +156,7 @@ def run_cmd(
         ..., "--config-name", "-n", help="Config file name (without .yaml)"
     ),
     action: Action = typer.Option(Action.run, "--action", "-a", help="Action to perform"),
-    overrides: Optional[List[str]] = typer.Argument(
+    overrides: list[str] | None = typer.Argument(
         None, help="Additional Hydra overrides (e.g., key=value)"
     ),
 ):
@@ -198,7 +196,7 @@ def run_cmd(
 @app.command()
 def train(
     model: str = typer.Argument(..., help="Model name (e.g., pi0, pi0_5, gr00t_n1_5)"),
-    config: Optional[Path] = typer.Option(None, "--config", "-c", help="Config YAML path"),
+    config: Path | None = typer.Option(None, "--config", "-c", help="Config YAML path"),
     stop: bool = typer.Option(False, "--stop", help="Stop training"),
     dryrun: bool = typer.Option(False, "--dryrun", help="Validate config only"),
     test: bool = typer.Option(False, "--test", help="Run with test"),
@@ -216,7 +214,7 @@ def train(
 @app.command()
 def serve(
     model: str = typer.Argument(..., help="Model name (e.g., pi0, pi0_5, gr00t_n1_5)"),
-    config: Optional[Path] = typer.Option(None, "--config", "-c", help="Config YAML path"),
+    config: Path | None = typer.Option(None, "--config", "-c", help="Config YAML path"),
     stop: bool = typer.Option(False, "--stop", help="Stop serving"),
     dryrun: bool = typer.Option(False, "--dryrun", help="Validate config only"),
     test: bool = typer.Option(False, "--test", help="Test serving"),
@@ -233,7 +231,7 @@ def serve(
 @app.command()
 def inference(
     model: str = typer.Argument(..., help="Model name (e.g., pi0, pi0_5)"),
-    config: Optional[Path] = typer.Option(None, "--config", "-c", help="Config YAML path"),
+    config: Path | None = typer.Option(None, "--config", "-c", help="Config YAML path"),
     stop: bool = typer.Option(False, "--stop", help="Stop inference"),
     dryrun: bool = typer.Option(False, "--dryrun", help="Validate config only"),
     test: bool = typer.Option(False, "--test", help="Run with test"),

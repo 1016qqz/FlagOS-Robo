@@ -105,9 +105,7 @@ class Utils:
 
     @staticmethod
     def dist_backend():
-        return os.getenv(
-            "FLAGOS_ROBO_TEST_DIST_BACKEND", Utils.platform_runtime()["dist_backend"]
-        )
+        return os.getenv("FLAGOS_ROBO_TEST_DIST_BACKEND", Utils.platform_runtime()["dist_backend"])
 
     @staticmethod
     def torch_device_type():

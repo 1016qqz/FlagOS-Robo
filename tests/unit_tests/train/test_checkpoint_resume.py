@@ -63,9 +63,7 @@ def _call_lines(tree, name):
 
 def _sole_call(tree, name):
     nodes = [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and _called_name(node) == name
+        node for node in ast.walk(tree) if isinstance(node, ast.Call) and _called_name(node) == name
     ]
     assert len(nodes) == 1, f"expected exactly one {name} call, got {len(nodes)}"
     return nodes[0]
@@ -84,9 +82,7 @@ def _main(tree):
 
 def _name_lines(tree, name):
     return sorted(
-        node.lineno
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Name) and node.id == name
+        node.lineno for node in ast.walk(tree) if isinstance(node, ast.Name) and node.id == name
     )
 
 
@@ -167,8 +163,7 @@ def test_dataloader_replay_does_not_burn_the_restored_rng(entry_point):
     ser = _call_lines(tree, "serialize_rng_state")
     deser = _call_lines(tree, "deserialize_rng_state")
     assert ser and deser, (
-        "expected serialize_rng_state()/deserialize_rng_state() bracketing the "
-        "dataloader replay"
+        "expected serialize_rng_state()/deserialize_rng_state() bracketing the dataloader replay"
     )
 
     replay = _sole_call(tree, "replay_dataloader_to_step")
@@ -188,9 +183,7 @@ def test_dataloader_replay_does_not_burn_the_restored_rng(entry_point):
         and len(node.iter.args) == 1
         and isinstance(node.iter.args[0], ast.Name)
         and node.iter.args[0].id == "step"
-        and any(
-            _called_name(c) == "next" for c in ast.walk(node) if isinstance(c, ast.Call)
-        )
+        and any(_called_name(c) == "next" for c in ast.walk(node) if isinstance(c, ast.Call))
     ]
     assert not inline, (
         "inline `for _ in range(step): next(dl_iter)` replay at line "
@@ -225,14 +218,10 @@ def test_save_persists_the_optimizer_state_resume_will_demand(entry_point):
         if not isinstance(node, ast.If):
             continue
         test_names = {n.id for n in ast.walk(node.test) if isinstance(n, ast.Name)}
-        test_attrs = {
-            n.attr for n in ast.walk(node.test) if isinstance(n, ast.Attribute)
-        }
+        test_attrs = {n.attr for n in ast.walk(node.test) if isinstance(n, ast.Attribute)}
         if not ({"is_main_process", "rank"} & (test_names | test_attrs)):
             continue
-        assert not (
-            node.body[0].lineno <= getter.lineno <= node.body[-1].end_lineno
-        ), (
+        assert not (node.body[0].lineno <= getter.lineno <= node.body[-1].end_lineno), (
             "get_optimizer_state_dict is a collective -- inside a rank-gated "
             f"block (line {node.lineno}) it deadlocks every non-zero rank"
         )
@@ -247,11 +236,7 @@ def _load_helper(name):
     """
     tree = ast.parse(UTILS.read_text(encoding="utf-8"))
     fn = next(
-        (
-            node
-            for node in tree.body
-            if isinstance(node, ast.FunctionDef) and node.name == name
-        ),
+        (node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == name),
         None,
     )
     assert fn is not None, f"{name} not found in {UTILS}"
@@ -294,8 +279,7 @@ def test_replay_advances_the_sampler_epoch_on_every_boundary():
 
     assert len(consumed) == 10, "the iterator must be advanced exactly `step` times"
     assert sampler.epochs == [1, 2], (
-        "expected the epoch to be advanced at steps 4 and 8; got "
-        f"{sampler.epochs}"
+        f"expected the epoch to be advanced at steps 4 and 8; got {sampler.epochs}"
     )
     assert epoch == 2, "the returned epoch is what the training loop continues from"
 
@@ -347,8 +331,7 @@ def test_consumed_indices_lands_resume_on_a_pass_boundary():
     remaining = batches_per_pass - skipped_batches
 
     assert step + remaining == 20, (
-        "the shortened pass must end on a multiple of batches_per_pass; got "
-        f"{step + remaining}"
+        f"the shortened pass must end on a multiple of batches_per_pass; got {step + remaining}"
     )
 
 
@@ -376,8 +359,7 @@ def test_sampler_state_dict_refuses_to_count_its_own_yields():
         (
             node
             for node in tree.body
-            if isinstance(node, ast.ClassDef)
-            and node.name == "StatefulDistributedSampler"
+            if isinstance(node, ast.ClassDef) and node.name == "StatefulDistributedSampler"
         ),
         None,
     )

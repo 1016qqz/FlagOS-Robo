@@ -24,30 +24,40 @@ from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
-from omegaconf import OmegaConf, DictConfig
 import numpy as np
 import torch
 import torch.distributed as dist
-from torch.distributed._composable.fsdp import fully_shard, MixedPrecisionPolicy
+from omegaconf import DictConfig, OmegaConf
+from torch.distributed._composable.fsdp import MixedPrecisionPolicy, fully_shard
+from torch.distributed.checkpoint.state_dict import (
+    StateDictOptions,
+    get_model_state_dict,
+    get_optimizer_state_dict,
+)
 from torch.distributed.device_mesh import init_device_mesh
-from torch.distributed.checkpoint.state_dict import get_model_state_dict, get_optimizer_state_dict, StateDictOptions
 from torch.optim import Optimizer
 
+import flagos_robo.models.vla.gr00t_n1_5.processor_gr00t  # noqa: F401  register GR00T processor steps
 from flagos_robo.logger import logger
-from flagos_robo.train.train_config import TrainConfig
+from flagos_robo.models.configs.types import FeatureType
+from flagos_robo.models.utils.constants import ACTION, OBS_PREFIX
+from flagos_robo.models.vla.base_policy import TrainablePolicy
+from flagos_robo.models.vla.pretrained_config import PreTrainedConfig
+from flagos_robo.platforms import get_platform
 from flagos_robo.train.datasets.lerobot_dataset import (
     LeRobotDataset,
     LeRobotDatasetMetadata,
 )
 from flagos_robo.train.datasets.utils import dataset_to_policy_features
 from flagos_robo.train.processor import PolicyProcessorPipeline
-from flagos_robo.models.utils.constants import ACTION, OBS_PREFIX
-from flagos_robo.models.configs.types import FeatureType
+from flagos_robo.train.train_config import TrainConfig
 from flagos_robo.train.utils.logging_utils import (
     AverageMeter,
     MetricsTracker,
     format_big_number,
 )
+from flagos_robo.train.utils.optim_setup import setup_optimizer_and_scheduler
+from flagos_robo.train.utils.random_utils import deserialize_rng_state, serialize_rng_state
 from flagos_robo.train.utils.train_utils import (
     StatefulDistributedSampler,
     consumed_indices_for_step,
@@ -58,40 +68,38 @@ from flagos_robo.train.utils.train_utils import (
     save_rng_state_only,
     update_last_checkpoint,
 )
-from flagos_robo.train.utils.random_utils import serialize_rng_state, deserialize_rng_state
-from flagos_robo.train.utils.optim_setup import setup_optimizer_and_scheduler
-from flagos_robo.models.vla.base_policy import TrainablePolicy
-from flagos_robo.models.vla.pretrained_config import PreTrainedConfig
-import flagos_robo.models.vla.gr00t_n1_5.processor_gr00t  # noqa: F401  register GR00T processor steps
-from flagos_robo.platforms import get_platform
-from flagos_robo.utils.precision_dump import (
-    append_step_log,
-    dump_dir_from_env,
-    dump_step,
-    step_log_dir_from_env,
-)
 from flagos_robo.utils.determinism import (
     determinism_enabled,
     enable_determinism,
     make_dataloader_generator,
     seed_worker,
 )
+from flagos_robo.utils.precision_dump import (
+    append_step_log,
+    dump_dir_from_env,
+    dump_step,
+    step_log_dir_from_env,
+)
 
 # Monkey-patch: transformers 4.57+ kernel-hub discovery can't find flash_attn on some platforms
 # (e.g. MUSA), but direct import works fine. Replace _lazy_imports so transformers uses flash_attn directly.
 try:
+    import transformers.modeling_flash_attention_utils as _fa_utils
     from flash_attn import flash_attn_func, flash_attn_varlen_func
     from flash_attn.bert_padding import pad_input, unpad_input
-    import transformers.modeling_flash_attention_utils as _fa_utils
+
     _fa_utils._flash_fn = flash_attn_func
     _fa_utils._flash_varlen_fn = flash_attn_varlen_func
     _fa_utils._pad_fn = pad_input
     _fa_utils._unpad_fn = unpad_input
+
     def _patched_lazy_imports(implementation=None):
         return flash_attn_func, flash_attn_varlen_func, pad_input, unpad_input
+
     _fa_utils._lazy_imports = _patched_lazy_imports
 except ImportError:
     pass
+
 
 def set_seed(seed: int):
     random.seed(seed)
@@ -101,8 +109,9 @@ def set_seed(seed: int):
     if get_platform().name() == "cuda":
         torch.backends.cudnn.enabled = True
         torch.backends.cudnn.benchmark = False
-        torch.backends.cudnn.deterministic = False 
+        torch.backends.cudnn.deterministic = False
         torch.backends.cuda.matmul.allow_tf32 = False
+
 
 def apply_fsdp2(policy, device_mesh):
     """Apply FSDP2 sharding to Gr00tN15.
@@ -221,7 +230,6 @@ def format_train_tracker_step(train_tracker: MetricsTracker) -> str:
     return " ".join(display_list)
 
 
-
 def make_policy(
     config: PreTrainedConfig,
     ds_meta: LeRobotDatasetMetadata | None = None,
@@ -230,11 +238,7 @@ def make_policy(
 
     # Use == instead of `is` for FeatureType.ACTION comparison
     # because flagos_robo.FeatureType and lerobot.FeatureType are different enum classes
-    output_features = {
-        key: ft
-        for key, ft in features.items()
-        if ft.type == FeatureType.ACTION
-    }
+    output_features = {key: ft for key, ft in features.items() if ft.type == FeatureType.ACTION}
     input_features = {key: ft for key, ft in features.items() if key not in output_features}
 
     config.output_features = output_features
@@ -413,7 +417,9 @@ def update_policy(
     optimizer.zero_grad()
 
     autocast_context = (
-        torch.amp.autocast(get_platform().amp_device_type(), dtype=torch.bfloat16) if use_amp else nullcontext()
+        torch.amp.autocast(get_platform().amp_device_type(), dtype=torch.bfloat16)
+        if use_amp
+        else nullcontext()
     )
 
     with autocast_context:
@@ -438,7 +444,9 @@ def update_policy(
         policy.update()
 
     train_metrics.loss = loss.item()
-    train_metrics.grad_norm = grad_norm.full_tensor().item() if hasattr(grad_norm, 'full_tensor') else grad_norm.item()
+    train_metrics.grad_norm = (
+        grad_norm.full_tensor().item() if hasattr(grad_norm, "full_tensor") else grad_norm.item()
+    )
     train_metrics.lr = optimizer.param_groups[0]["lr"]
     train_metrics.update_s = time.perf_counter() - start_time
 
@@ -456,7 +464,7 @@ def main(config: TrainConfig, seed: int):
     enable_determinism(seed)
 
     policy_config = PreTrainedConfig.from_train_config(config)
-  
+
     local_rank = int(os.environ["LOCAL_RANK"])
     get_platform().set_device(local_rank)
     dist.init_process_group(backend=get_platform().dist_backend())
@@ -580,7 +588,10 @@ def main(config: TrainConfig, seed: int):
     resume_from = config.system.checkpoint.resume_from
     if resume_from:
         step, dl_state = load_training_state_fsdp2(
-            Path(resume_from), policy, optimizer, lr_scheduler,
+            Path(resume_from),
+            policy,
+            optimizer,
+            lr_scheduler,
         )
         if dl_state is not None and hasattr(sampler, "load_state_dict"):
             # Preferred path: the sampler recorded how far into the epoch it
@@ -711,9 +722,7 @@ def main(config: TrainConfig, seed: int):
             # Computed on every rank, not just the main one: the non-main ranks
             # need the same directory to deposit their own RNG files below.
             output_dir = Path(config.system.checkpoint.output_directory)
-            checkpoint_dir = get_step_checkpoint_dir(
-                output_dir, config.system.train_steps, step
-            )
+            checkpoint_dir = get_step_checkpoint_dir(output_dir, config.system.train_steps, step)
 
             if is_main_process:
                 logger.info(f"Saving checkpoint at step {step}")
@@ -734,9 +743,7 @@ def main(config: TrainConfig, seed: int):
                     # the resumed run skip that many batches. See
                     # StatefulDistributedSampler's docstring.
                     dataloader_state=sampler.state_dict(
-                        consumed_indices_for_step(
-                            step, len(dataloader), config.system.batch_size
-                        )
+                        consumed_indices_for_step(step, len(dataloader), config.system.batch_size)
                     )
                     if hasattr(sampler, "state_dict")
                     else None,

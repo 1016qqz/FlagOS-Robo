@@ -74,7 +74,7 @@ def probe(repo: Path) -> tuple[dict[str, list], list[str]]:
             name = getattr(e, "name", "") or ""
             key = "internal" if name.startswith(PKG) else "external"
             buckets[key].append((m, name))
-        except BaseException:  # noqa: BLE001 - probe must survive anything
+        except BaseException:
             tb = traceback.format_exc().strip().splitlines()[-1]
             buckets["other"].append((m, tb))
     return buckets, mods

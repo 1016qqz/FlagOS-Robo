@@ -117,7 +117,7 @@ def classify_difference(key: str) -> str:
 # Determinism snippet (prerequisite for strict L3-L5)
 # --------------------------------------------------------------------------
 
-DETERMINISM_SNIPPET = '''\
+DETERMINISM_SNIPPET = """\
 # --- strict-alignment determinism block -------------------------------------
 # CUBLAS_WORKSPACE_CONFIG MUST be set before CUDA initialises. Setting it after
 # the first CUDA call silently does nothing -- a real trap.
@@ -134,7 +134,7 @@ torch.backends.cudnn.benchmark = False
 torch.use_deterministic_algorithms(True)
 # Also required: attention_dropout=0 and hidden_dropout=0 in the model config.
 # ---------------------------------------------------------------------------
-'''
+"""
 
 
 # --------------------------------------------------------------------------
@@ -174,9 +174,7 @@ class Result:
 # L1 - parameter table
 # --------------------------------------------------------------------------
 
-_PARAM_LINE_RE = re.compile(
-    r"^\s*(?P<name>[\w.\[\]]+)\s+(?P<shape>[\d,x\s()\[\]]+?)\s*$"
-)
+_PARAM_LINE_RE = re.compile(r"^\s*(?P<name>[\w.\[\]]+)\s+(?P<shape>[\d,x\s()\[\]]+?)\s*$")
 
 
 def parse_param_table(text: str) -> dict[str, tuple[int, ...]]:
@@ -209,9 +207,7 @@ def numel(shape: tuple[int, ...]) -> int:
     return n
 
 
-def compare_params(
-    ref_text: str, tgt_text: str, mapping: dict[str, str] | None = None
-) -> Result:
+def compare_params(ref_text: str, tgt_text: str, mapping: dict[str, str] | None = None) -> Result:
     """L1: every parameter must map 1:1 and total element count must match."""
     res = Result("L1 model structure")
     ref = parse_param_table(ref_text)
@@ -237,9 +233,7 @@ def compare_params(
 
     for name in sorted(set(mapped_ref) & set(tgt)):
         if mapped_ref[name] != tgt[name]:
-            res.findings.append(
-                f"shape mismatch {name}: ref={mapped_ref[name]} tgt={tgt[name]}"
-            )
+            res.findings.append(f"shape mismatch {name}: ref={mapped_ref[name]} tgt={tgt[name]}")
 
     ref_total = sum(numel(s) for s in ref.values())
     tgt_total = sum(numel(s) for s in tgt.values())
@@ -316,9 +310,7 @@ def check_batch_identity(cfg: dict[str, Any], side: str) -> list[str]:
     if dp is None and world is not None:
         denom = int(tp) * int(pp)
         if denom == 0 or int(world) % denom != 0:
-            problems.append(
-                f"{side}: world_size={world} not divisible by TPxPP={denom}"
-            )
+            problems.append(f"{side}: world_size={world} not divisible by TPxPP={denom}")
             return problems
         dp = int(world) // denom
     if dp is None:
@@ -326,8 +318,7 @@ def check_batch_identity(cfg: dict[str, Any], side: str) -> list[str]:
     if accum is None:
         if int(mbs) * int(dp) == 0 or int(gbs) % (int(mbs) * int(dp)) != 0:
             problems.append(
-                f"{side}: global={gbs} not divisible by micro x DP="
-                f"{int(mbs) * int(dp)}"
+                f"{side}: global={gbs} not divisible by micro x DP={int(mbs) * int(dp)}"
             )
             return problems
         accum = int(gbs) // (int(mbs) * int(dp))
@@ -355,9 +346,7 @@ def compare_config(ref: dict[str, Any], tgt: dict[str, Any]) -> Result:
     ref_gbs = flatten(ref).get("global_batch_size")
     tgt_gbs = flatten(tgt).get("global_batch_size")
     if ref_gbs is not None and tgt_gbs is not None and ref_gbs != tgt_gbs:
-        res.findings.append(
-            f"global_batch_size differs: ref={ref_gbs} tgt={tgt_gbs}"
-        )
+        res.findings.append(f"global_batch_size differs: ref={ref_gbs} tgt={tgt_gbs}")
 
     only_ref = sorted(set(rf) - set(tf))
     only_tgt = sorted(set(tf) - set(rf))
@@ -560,14 +549,12 @@ def compare_tensor_dir(
             rs, ts = r[key], t[key]
             if rs.get("shape") != ts.get("shape"):
                 res.findings.append(
-                    f"{name}:{key}: shape ref={rs.get('shape')} "
-                    f"tgt={ts.get('shape')}"
+                    f"{name}:{key}: shape ref={rs.get('shape')} tgt={ts.get('shape')}"
                 )
                 continue
             if rs.get("dtype") != ts.get("dtype"):
                 res.findings.append(
-                    f"{name}:{key}: dtype ref={rs.get('dtype')} "
-                    f"tgt={ts.get('dtype')}"
+                    f"{name}:{key}: dtype ref={rs.get('dtype')} tgt={ts.get('dtype')}"
                 )
             # Byte digest: only meaningful under strict, and only when both
             # dumps carry one. Deliberately NOT checked in relaxed mode, where
@@ -592,8 +579,7 @@ def compare_tensor_dir(
                         )
                 elif _rel(a, b) > rtol:
                     res.findings.append(
-                        f"{name}:{key}.{sk}: rel={_rel(a, b):.3e} > rtol={rtol} "
-                        f"ref={a!r} tgt={b!r}"
+                        f"{name}:{key}.{sk}: rel={_rel(a, b):.3e} > rtol={rtol} ref={a!r} tgt={b!r}"
                     )
 
     res.notes.append(
@@ -744,9 +730,7 @@ def compare_loss(
         if math.isnan(b) or math.isinf(b):
             res.findings.append(f"step {s}: TGT loss is not finite: {b!r}")
     bad = [
-        (s, a, b)
-        for s, a, b in zip(common, ref, tgt)
-        if (a != b if strict else _rel(a, b) > rtol)
+        (s, a, b) for s, a, b in zip(common, ref, tgt) if (a != b if strict else _rel(a, b) > rtol)
     ]
     res.notes.append(f"compared {len(common)} step(s)")
     if bad:
@@ -754,14 +738,13 @@ def compare_loss(
         res.notes.append(
             "shape="
             + shape
-            + "  max_abs_delta={max_abs_delta:.6e} "
-            "mean_abs_delta={mean_abs_delta:.6e}".format(**stats)
+            + "  max_abs_delta={max_abs_delta:.6e} mean_abs_delta={mean_abs_delta:.6e}".format(
+                **stats
+            )
         )
         res.notes.append(f"action: {SHAPE_ACTIONS[shape]}")
         for s, a, b in bad[:5]:
-            res.findings.append(
-                f"step {s}: ref={a!r} tgt={b!r} rel={_rel(a, b):.3e}"
-            )
+            res.findings.append(f"step {s}: ref={a!r} tgt={b!r} rel={_rel(a, b):.3e}")
         if len(bad) > 5:
             res.findings.append(f"... and {len(bad) - 5} more differing step(s)")
     return res
@@ -1085,11 +1068,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.cmd == "params":
-            mapping = (
-                json.loads(args.mapping.read_text(encoding="utf-8"))
-                if args.mapping
-                else None
-            )
+            mapping = json.loads(args.mapping.read_text(encoding="utf-8")) if args.mapping else None
             res = compare_params(
                 args.ref.read_text(encoding="utf-8"),
                 args.tgt.read_text(encoding="utf-8"),

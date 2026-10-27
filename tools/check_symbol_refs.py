@@ -61,14 +61,11 @@ PRUNE_DIRS = ("__pycache__", "_ci", ".git", "build", "dist", ".mypy_cache")
 # D3 allowlist: internal modules that are intentionally absent from this subset
 # and are therefore imported behind try/except ImportError. Value = why.
 ALLOWED_GUARDED_MODULES = {
-    "flagos_robo.inference.core.diffusion.timestep_tracker_transformation":
-        "FlagScale diffusion-inference extra; registry stays constructible without it "
-        "(flagos_robo/transformations/__init__.py registers it only if importable)",
-    "flagos_robo.inference.core.diffusion.taylorseer_transformation":
-        "FlagScale diffusion-inference extra; same conditional registration",
-    "flagos_robo.inference.runtime_context":
-        "FlagScale diffusion engine's context provider is out of robotics scope; "
-        "state_scope_transformation falls back to a current_ctx() that returns None",
+    "flagos_robo.inference.core.diffusion.timestep_tracker_transformation": "FlagScale diffusion-inference extra; registry stays constructible without it "
+    "(flagos_robo/transformations/__init__.py registers it only if importable)",
+    "flagos_robo.inference.core.diffusion.taylorseer_transformation": "FlagScale diffusion-inference extra; same conditional registration",
+    "flagos_robo.inference.runtime_context": "FlagScale diffusion engine's context provider is out of robotics scope; "
+    "state_scope_transformation falls back to a current_ctx() that returns None",
 }
 
 BAIL_NODES = (ast.Return, ast.Raise, ast.Continue, ast.Break)
@@ -311,7 +308,10 @@ def _enclosing_scope(tree: ast.AST, try_node: ast.Try) -> ast.AST:
             continue
         lo = node.lineno
         hi = getattr(node, "end_lineno", lo) or lo
-        if lo <= try_node.lineno and (getattr(try_node, "end_lineno", try_node.lineno) or try_node.lineno) <= hi:
+        if (
+            lo <= try_node.lineno
+            and (getattr(try_node, "end_lineno", try_node.lineno) or try_node.lineno) <= hi
+        ):
             span = hi - lo
             if span < best_span:
                 best, best_span = node, span
@@ -499,8 +499,8 @@ def scan(root: Path) -> dict:
             sym_cache[mod] = symbols_of(p) if p is not None else (set(), False)
         return sym_cache[mod]
 
-    dangling: list[str] = []          # D1 hard
-    name_gaps: list[str] = []         # D2 hard
+    dangling: list[str] = []  # D1 hard
+    name_gaps: list[str] = []  # D2 hard
     guarded_unresolved: list[str] = []  # D3 allowlisted
     unlisted_guarded: list[str] = []  # D3 violations
     sites = 0
@@ -523,9 +523,7 @@ def scan(root: Path) -> dict:
                     else:
                         unlisted_guarded.append(line)
                 else:
-                    dangling.append(
-                        f"{rel}:{lineno}  module missing: {mod} ({', '.join(names)})"
-                    )
+                    dangling.append(f"{rel}:{lineno}  module missing: {mod} ({', '.join(names)})")
                 continue
             if is_guarded:
                 continue  # module present; a guarded symbol import degrades by design
@@ -615,25 +613,25 @@ def report(res: dict, root: Path, quiet: bool = False) -> int:
 # self-test: prove the gate can go red, not just that it says CLEAN
 # --------------------------------------------------------------------------- #
 
-_NEG_GUARDED_DROP = '''\
+_NEG_GUARDED_DROP = """\
 try:
     from flagos_robo.inference.runtime_context import current_ctx
 except ImportError:
     def current_ctx():
         return None
 VALUE = current_ctx()
-'''
+"""
 
-_NEG_HANDLER_BAILS = '''\
+_NEG_HANDLER_BAILS = """\
 def seed():
     try:
         import numpy as np
     except ImportError:
         return
     np.random.seed(0)
-'''
+"""
 
-_NEG_USED_ONLY_IN_TRY = '''\
+_NEG_USED_ONLY_IN_TRY = """\
 RANK = 0
 try:
     import torch.distributed as dist
@@ -642,34 +640,34 @@ try:
 except ImportError:
     pass
 print(RANK)
-'''
+"""
 
 _POS_DANGLING_SYMBOL = "from flagos_robo.utils.determinism import no_such_symbol_xyz\n"
 
 _POS_DANGLING_MODULE = "from flagos_robo.no_such_module_xyz import Thing\n"
 
-_POS_REAL_NAME_GAP = '''\
+_POS_REAL_NAME_GAP = """\
 try:
     from flagos_robo.utils.determinism import seed_worker
 except ImportError:
     pass
 HANDLER = seed_worker
-'''
+"""
 
-_POS_UNLISTED_GUARDED = '''\
+_POS_UNLISTED_GUARDED = """\
 try:
     from flagos_robo.not_migrated_feature_xyz import Feature
 except ImportError:
     Feature = None
 USED = Feature
-'''
+"""
 
 # The pre-set default that makes a handler harmless must be *unconditional*. A
 # binding inside an if/for/while is not on every path, so the read after the try
 # can still raise NameError. This case exists because a path-insensitive
 # ast.walk over everything above the try silently MISSES it -- a false negative,
 # the direction a gate must never fail in.
-_POS_CONDITIONAL_PRESET = '''\
+_POS_CONDITIONAL_PRESET = """\
 def f(cond):
     if cond:
         handler = None
@@ -679,12 +677,12 @@ def f(cond):
     except ImportError:
         pass
     return handler
-'''
+"""
 
 # Counterpart to the case above: the same shape with the default hoisted to the
 # function's straight-line body is genuinely safe and must stay green. Together
 # the pair pins the definite-assignment rule from both sides.
-_NEG_UNCONDITIONAL_PRESET = '''\
+_NEG_UNCONDITIONAL_PRESET = """\
 def f(cond):
     handler = None
     try:
@@ -693,7 +691,7 @@ def f(cond):
     except ImportError:
         pass
     return handler
-'''
+"""
 
 
 def _run_case(root: Path, rel: str, text: str) -> int:
@@ -766,7 +764,9 @@ def run_self_test(repo: Path) -> int:
         (empty / "flagos_robo").mkdir(parents=True)
         rc = report(scan(empty), empty, quiet=True)
         ok = rc == 2
-        print(f"  [rc2  ] {'empty tree scans nothing':<40} RC={rc} (expect 2) {'ok' if ok else 'BAD'}")
+        print(
+            f"  [rc2  ] {'empty tree scans nothing':<40} RC={rc} (expect 2) {'ok' if ok else 'BAD'}"
+        )
         if not ok:
             failures.append("an empty tree did not produce RC=2; RC=0 could mean no work")
 

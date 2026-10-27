@@ -22,9 +22,9 @@ Design notes
 * Instantiation runs on CPU/meta-free real tensors; device is forced to cpu to
   avoid colliding with the ~38GB/GPU already in use by other tenants.
 """
+
 import argparse
 import json
-import os
 import sys
 import traceback
 from pathlib import Path
@@ -131,7 +131,7 @@ def _features(state_dim, action_dim, cams):
 
 def _nparams(m):
     n = sum(p.numel() for p in m.parameters())
-    return f"{n/1e9:.3f}B params" if n >= 1e9 else f"{n/1e6:.1f}M params"
+    return f"{n / 1e9:.3f}B params" if n >= 1e9 else f"{n / 1e6:.1f}M params"
 
 
 def l2(classes, groot_base):
@@ -220,8 +220,14 @@ def l2plus(classes, ckpt_dirs):
             record("L2+", label, False, "class unavailable (L0 failed)")
             continue
         if not d or not (Path(d) / "model.safetensors").is_file():
-            RESULTS.append({"level": "L2+", "name": label, "ok": None,
-                            "detail": f"SKIP weights not on disk: {d}"})
+            RESULTS.append(
+                {
+                    "level": "L2+",
+                    "name": label,
+                    "ok": None,
+                    "detail": f"SKIP weights not on disk: {d}",
+                }
+            )
             print(f"[L2+] SKIP {label} :: weights not on disk: {d}", flush=True)
             continue
         try:
@@ -230,8 +236,12 @@ def l2plus(classes, ckpt_dirs):
             cfg.dtype = "float32"
             cfg.pretrained_path = d
             policy = classes[cls_key].from_pretrained(d, config=cfg)
-            record("L2+", label, True,
-                   f"{type(policy).__name__} from_pretrained({d}) OK, {_nparams(policy)}")
+            record(
+                "L2+",
+                label,
+                True,
+                f"{type(policy).__name__} from_pretrained({d}) OK, {_nparams(policy)}",
+            )
             del policy
         except Exception as e:
             record("L2+", label, False, f"{type(e).__name__}: {e}")
@@ -272,8 +282,14 @@ def l2plus_groot(classes, groot_base, cams=("base_0_rgb",)):
         return
     shards = sorted(glob.glob(str(Path(groot_base) / "*.safetensors")))
     if not shards:
-        RESULTS.append({"level": "L2+", "name": label, "ok": None,
-                        "detail": f"SKIP weights not on disk: {groot_base}"})
+        RESULTS.append(
+            {
+                "level": "L2+",
+                "name": label,
+                "ok": None,
+                "detail": f"SKIP weights not on disk: {groot_base}",
+            }
+        )
         print(f"[L2+] SKIP {label} :: weights not on disk: {groot_base}", flush=True)
         return
     try:
@@ -284,9 +300,7 @@ def l2plus_groot(classes, groot_base, cams=("base_0_rgb",)):
         )
 
         def _build(load_pretrained):
-            cfg = Gr00tN15Config(
-                base_model_path=groot_base, load_pretrained=load_pretrained
-            )
+            cfg = Gr00tN15Config(base_model_path=groot_base, load_pretrained=load_pretrained)
             cfg.device = "cpu"
             inp, out = _features(cfg.max_state_dim, cfg.max_action_dim, list(cams))
             cfg.input_features, cfg.output_features = inp, out
@@ -326,14 +340,19 @@ def l2plus_groot(classes, groot_base, cams=("base_0_rgb",)):
                 record("L2+", label, False, f"probe {p} does not match checkpoint")
                 return
             if torch.equal(rnd, want_t):
-                record("L2+", label, False,
-                       f"probe {p} matches a random build too -- check is vacuous")
+                record(
+                    "L2+", label, False, f"probe {p} matches a random build too -- check is vacuous"
+                )
                 return
 
-        record("L2+", label, True,
-               f"Gr00tN15 load_pretrained=True({groot_base}) OK, "
-               f"{n_loaded / 1e9:.3f}B params, {len(probes)} probe tensors "
-               f"bit-identical to shards (and differ under random init)")
+        record(
+            "L2+",
+            label,
+            True,
+            f"Gr00tN15 load_pretrained=True({groot_base}) OK, "
+            f"{n_loaded / 1e9:.3f}B params, {len(probes)} probe tensors "
+            f"bit-identical to shards (and differ under random init)",
+        )
     except Exception as e:
         record("L2+", label, False, f"{type(e).__name__}: {e}")
         traceback.print_exc()
@@ -344,9 +363,11 @@ def main():
     # examples/ is not migrated yet (it lands in batch B7), so L1 still reads the
     # YAML out of the FlagScale reference tree. Verified byte-identical to the
     # host copies. Repoint with --examples-root once B7 moves them in-repo.
-    ap.add_argument("--examples-root",
-                    default="/workspace/flagscale_ref/FlagScale/examples",
-                    help="dir holding pi0/ pi0_5/ gr00t_n1_5/ with conf/train/*.yaml")
+    ap.add_argument(
+        "--examples-root",
+        default="/workspace/flagscale_ref/FlagScale/examples",
+        help="dir holding pi0/ pi0_5/ gr00t_n1_5/ with conf/train/*.yaml",
+    )
     ap.add_argument("--groot-base", default="/workspace/models/nvidia/GR00T-N1.5-3B")
     ap.add_argument("--pi0-ckpt", default="/workspace/models/lerobot/pi0_base")
     ap.add_argument("--pi05-ckpt", default="/workspace/models/lerobot/pi05_libero_base")

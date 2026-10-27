@@ -159,7 +159,9 @@ def check_l1_imports(root: Path) -> list[Violation]:
                         out.append(Violation("L1", str(p), node.lineno, f"import {alias.name}"))
             elif isinstance(node, ast.ImportFrom) and node.module:
                 if MEGATRON_RE.match(node.module):
-                    out.append(Violation("L1", str(p), node.lineno, f"from {node.module} import ..."))
+                    out.append(
+                        Violation("L1", str(p), node.lineno, f"from {node.module} import ...")
+                    )
     return out
 
 
@@ -330,9 +332,7 @@ def run_self_test(root: Path) -> int:
     print("== self-test: planting known violations ==")
     failures = []
     tmp_root = Path(tempfile.mkdtemp()) / "repo"
-    shutil.copytree(
-        root, tmp_root, ignore=shutil.ignore_patterns(*SKIP_DIRS, "*.pyc")
-    )
+    shutil.copytree(root, tmp_root, ignore=shutil.ignore_patterns(*SKIP_DIRS, "*.pyc"))
 
     # L1: a real import statement.
     pkg = tmp_root / "flagos_robo" / "_selftest_l1.py"
@@ -376,7 +376,9 @@ def run_self_test(root: Path) -> int:
     fp_req.write_text("# megatron_core is FORBIDDEN here\ntorch>=2.0\n")
     fp_hits = [
         v
-        for v in check_l1_imports(tmp_root) + check_l2_code_text(tmp_root) + check_l3_declared_deps(tmp_root)
+        for v in check_l1_imports(tmp_root)
+        + check_l2_code_text(tmp_root)
+        + check_l3_declared_deps(tmp_root)
         if "_selftest_fp" in v.path
     ]
     print(f"  FP control (doc/comment mentions) -> {len(fp_hits)} violation(s), expect 0")
@@ -398,7 +400,9 @@ def run_self_test(root: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument(
         "--root",
         type=Path,
@@ -410,7 +414,9 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="also assert megatron is absent from the CURRENT python env (L4)",
     )
-    ap.add_argument("--self-test", action="store_true", help="negative control: prove the checker can fail")
+    ap.add_argument(
+        "--self-test", action="store_true", help="negative control: prove the checker can fail"
+    )
     ap.add_argument("--json", action="store_true", help="emit violations as JSON")
     ap.add_argument(
         "--allow-energon",
@@ -453,7 +459,10 @@ def main(argv: list[str] | None = None) -> int:
             for v in violations:
                 print("  " + str(v))
         else:
-            print("\nPASS: no Megatron dependency in source, declared deps" + (", or env" if args.check_env else ""))
+            print(
+                "\nPASS: no Megatron dependency in source, declared deps"
+                + (", or env" if args.check_env else "")
+            )
     return 1 if violations else 0
 
 

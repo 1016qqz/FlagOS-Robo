@@ -75,12 +75,10 @@ from __future__ import annotations
 import argparse
 import ast
 import json
-import os
 import re
 import shutil
 import sys
 import tempfile
-
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -286,9 +284,7 @@ def scan_dynamic(source_root: Path, package: str) -> list[Reference]:
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 mod = _dotted_to_module(node.value, package)
                 if mod:
-                    refs.append(
-                        Reference("dynamic-string", rel, node.lineno, node.value, mod)
-                    )
+                    refs.append(Reference("dynamic-string", rel, node.lineno, node.value, mod))
             # (b) importlib-style calls whose argument is NOT a literal
             elif isinstance(node, ast.Call):
                 fn = node.func
@@ -503,9 +499,7 @@ class ScanReport:
         ``entrypoint:`` paths are invisible to any import-level analysis).
         """
         return [
-            r
-            for r in self.text
-            if r.module is not None and not in_planned(r.module, self.planned)
+            r for r in self.text if r.module is not None and not in_planned(r.module, self.planned)
         ]
 
     @property
@@ -573,9 +567,7 @@ def stale_cut_entries(cut: list[str], cut_reached: list[str]) -> list[str]:
     return [p for p in cut if not any(in_planned(m, [p]) for m in cut_reached)]
 
 
-def dead_planned_entries(
-    planned: list[str], source_root: Path, package: str
-) -> list[str]:
+def dead_planned_entries(planned: list[str], source_root: Path, package: str) -> list[str]:
     """Planned entries that name a module which does not exist in the source tree.
 
     The closure scan only ever asks "is every module I REACHED inside the
@@ -648,7 +640,9 @@ def render(report: ScanReport, verbose: bool = False) -> None:
     else:
         print("  -> string module refs outside planned set: 0")
     if report.dynamic_opaque:
-        print(f"  .. runtime-resolved call sites needing manual review: {len(report.dynamic_opaque)}")
+        print(
+            f"  .. runtime-resolved call sites needing manual review: {len(report.dynamic_opaque)}"
+        )
         for r in report.dynamic_opaque:
             print(f"     ? {r.file}:{r.line}  {r.text}")
 
@@ -917,9 +911,7 @@ def run_self_test(verbose: bool = False) -> int:
         # `flagscale.runner.backend_native_train` (real path has an extra
         # `.backend.`) survived all of W1. Check both directions here: the
         # typo must be caught, and a live entry must not be flagged.
-        dead_typo = dead_planned_entries(
-            FIXTURE_PLANNED + ["demo.keep.no_such_module"], c1, "demo"
-        )
+        dead_typo = dead_planned_entries([*FIXTURE_PLANNED, "demo.keep.no_such_module"], c1, "demo")
         checks.append(
             (
                 "planned entry naming a nonexistent module is reported DEAD",
@@ -940,7 +932,7 @@ def run_self_test(verbose: bool = False) -> int:
                 not any(
                     "no_such_module" in m
                     for m in _scan_fixture(
-                        c1, FIXTURE_PLANNED + ["demo.keep.no_such_module"]
+                        c1, [*FIXTURE_PLANNED, "demo.keep.no_such_module"]
                     ).reached
                 ),
                 "unreached entry never enters reached/outside, so C1 cannot see it",

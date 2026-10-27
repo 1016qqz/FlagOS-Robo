@@ -35,7 +35,7 @@ TOOL_PATH = REPO_ROOT / "tools" / "compare_precision.py"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from flagos_robo.utils import precision_dump as pd  # noqa: E402
+from flagos_robo.utils import precision_dump as pd
 
 
 def _run_loss_cmp(ref: Path, tgt: Path) -> subprocess.CompletedProcess:
@@ -152,9 +152,7 @@ def test_out_of_order_steps_are_sorted_on_conversion(tmp_path):
     for step in (5, 3, 9, 1):
         pd.dump_loss(run, step, 1.0 + step)
 
-    rows = json.loads(
-        pd.losses_to_json(run / pd.DEFAULT_LOSS_FILENAME).read_text(encoding="utf-8")
-    )
+    rows = json.loads(pd.losses_to_json(run / pd.DEFAULT_LOSS_FILENAME).read_text(encoding="utf-8"))
 
     assert [r["step"] for r in rows] == [1, 3, 5, 9]
 
@@ -201,9 +199,7 @@ def test_step_relpath_is_zero_padded_for_lexicographic_order(tmp_path):
 
 def test_extra_metadata_cannot_overwrite_step_or_loss(tmp_path):
     """``extra`` is caller-supplied; it must not shadow the two load-bearing keys."""
-    path = pd.dump_loss(
-        tmp_path / "r", 7, 0.25, extra={"step": 999, "loss": 999.0, "lr": 1e-4}
-    )
+    path = pd.dump_loss(tmp_path / "r", 7, 0.25, extra={"step": 999, "loss": 999.0, "lr": 1e-4})
     record = pd.read_loss_jsonl(path)[0]
 
     assert record["step"] == 7

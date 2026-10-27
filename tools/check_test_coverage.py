@@ -84,11 +84,7 @@ SKIP_DIRS = {"__pycache__", ".git", "build", "dist", "_ci"}
 def _py_files(root: Path) -> list[Path]:
     if not root.is_dir():
         return []
-    return [
-        p
-        for p in sorted(root.rglob("*.py"))
-        if not SKIP_DIRS.intersection(p.parts)
-    ]
+    return [p for p in sorted(root.rglob("*.py")) if not SKIP_DIRS.intersection(p.parts)]
 
 
 def _loc(path: Path) -> int:
@@ -149,7 +145,9 @@ def _ingests_source(tree: ast.AST) -> bool:
         name = (
             func.attr
             if isinstance(func, ast.Attribute)
-            else func.id if isinstance(func, ast.Name) else None
+            else func.id
+            if isinstance(func, ast.Name)
+            else None
         )
         if name in SOURCE_INGEST_CALLS:
             return True
@@ -267,8 +265,7 @@ def report(repo: Path, quiet: bool = False) -> int:
     try:
         current = measure(repo)
     except ValueError as exc:
-        print(f"ERROR: {exc} -- nothing to check, so RC=0 would be meaningless",
-              file=sys.stderr)
+        print(f"ERROR: {exc} -- nothing to check, so RC=0 would be meaningless", file=sys.stderr)
         return 2
 
     baseline = None
@@ -343,7 +340,7 @@ def report(repo: Path, quiet: bool = False) -> int:
 # A test that reads the source instead of importing it. This is the shape that
 # binds train_pi.py today, and the shape a dotted-path-only scanner scores as
 # zero-reference. It must count, or the ratchet pins a number that is wrong.
-_TEST_PATH_PARTS = '''\
+_TEST_PATH_PARTS = """\
 import ast
 from pathlib import Path
 
@@ -355,37 +352,37 @@ def test_target_defines_something():
     for entry in ENTRY_POINTS:
         tree = ast.parse((TARGET_DIR / entry).read_text(encoding="utf-8"))
         assert any(isinstance(n, ast.FunctionDef) for n in ast.walk(tree))
-'''
+"""
 
-_TEST_IMPORT = '''\
+_TEST_IMPORT = """\
 from flagos_robo._selftest_cov_target import thing
 
 
 def test_thing():
     assert thing() == 1
-'''
+"""
 
-_TEST_UNRELATED = '''\
+_TEST_UNRELATED = """\
 def test_nothing_about_the_target():
     assert True
-'''
+"""
 
 # Names every path component of the target but never reads it. Dimension 3 is a
 # set-subset match on string literals, so without the SOURCE_INGEST_CALLS filter
 # this scores as full coverage and the ratchet pins an inflated number. Keep this
 # red: it is the measured false positive, not a hypothetical one.
-_TEST_PARTS_WITHOUT_READING = '''\
+_TEST_PARTS_WITHOUT_READING = """\
 PARTS = ["flagos_robo", "_selftest_cov_target.py"]
 
 
 def test_only_names_the_parts():
     assert PARTS
-'''
+"""
 
-_SOURCE_TARGET = '''\
+_SOURCE_TARGET = """\
 def thing():
     return 1
-'''
+"""
 
 # Zero LOC on purpose. Dropping its only reference moves referenced_modules
 # without moving blind_loc, which is the one input that isolates the
@@ -421,7 +418,8 @@ def run_self_test(repo: Path) -> int:
     with tempfile.TemporaryDirectory() as td:
         sandbox = Path(td) / "repo"
         shutil.copytree(
-            repo, sandbox,
+            repo,
+            sandbox,
             ignore=shutil.ignore_patterns(*SKIP_DIRS, "*.egg-info"),
         )
         write_baseline(sandbox, measure(sandbox))
@@ -445,19 +443,25 @@ def run_self_test(repo: Path) -> int:
 
         rc = _case(sandbox, _SOURCE_TARGET, None)
         ok = rc == 1
-        print(f"  [red  ] {'new module no test mentions':<42} RC={rc} (expect 1) {'ok' if ok else 'BLIND'}")
+        print(
+            f"  [red  ] {'new module no test mentions':<42} RC={rc} (expect 1) {'ok' if ok else 'BLIND'}"
+        )
         if not ok:
             failures.append("missed a real regression: blind LOC grew")
 
         rc = _case(sandbox, _SOURCE_TARGET, _TEST_UNRELATED)
         ok = rc == 1
-        print(f"  [red  ] {'new module, test ignores it':<42} RC={rc} (expect 1) {'ok' if ok else 'BLIND'}")
+        print(
+            f"  [red  ] {'new module, test ignores it':<42} RC={rc} (expect 1) {'ok' if ok else 'BLIND'}"
+        )
         if not ok:
             failures.append("missed a real regression: a test that adds no reference")
 
         rc = _case(sandbox, _SOURCE_TARGET, _TEST_PARTS_WITHOUT_READING)
         ok = rc == 1
-        print(f"  [red  ] {'test names path parts but never reads':<42} RC={rc} (expect 1) {'ok' if ok else 'BLIND'}")
+        print(
+            f"  [red  ] {'test names path parts but never reads':<42} RC={rc} (expect 1) {'ok' if ok else 'BLIND'}"
+        )
         if not ok:
             failures.append(
                 "dimension 3 credited a test that only names path components; "
@@ -478,7 +482,9 @@ def run_self_test(repo: Path) -> int:
         src.unlink(missing_ok=True)
         _baseline_path(sandbox).write_text(saved_baseline, encoding="utf-8")
         ok = rc == 1
-        print(f"  [red  ] {'deleting a test drops a reference':<42} RC={rc} (expect 1) {'ok' if ok else 'BLIND'}")
+        print(
+            f"  [red  ] {'deleting a test drops a reference':<42} RC={rc} (expect 1) {'ok' if ok else 'BLIND'}"
+        )
         if not ok:
             failures.append("missed a real regression: referenced_modules fell")
 
@@ -488,7 +494,9 @@ def run_self_test(repo: Path) -> int:
         rc = report(sandbox, quiet=True)
         moved.write_text(saved, encoding="utf-8")
         ok = rc == 1
-        print(f"  [red  ] {'baseline file missing':<42} RC={rc} (expect 1) {'ok' if ok else 'BLIND'}")
+        print(
+            f"  [red  ] {'baseline file missing':<42} RC={rc} (expect 1) {'ok' if ok else 'BLIND'}"
+        )
         if not ok:
             failures.append("a missing baseline passed; the gate would be vacuous")
 
@@ -502,7 +510,9 @@ def run_self_test(repo: Path) -> int:
         (empty / "tests").mkdir(parents=True)
         rc = report(empty, quiet=True)
         ok = rc == 2
-        print(f"  [rc2  ] {'empty tree scans nothing':<42} RC={rc} (expect 2) {'ok' if ok else 'BAD'}")
+        print(
+            f"  [rc2  ] {'empty tree scans nothing':<42} RC={rc} (expect 2) {'ok' if ok else 'BAD'}"
+        )
         if not ok:
             failures.append("an empty tree did not produce RC=2; RC=0 could mean no work")
 
@@ -511,8 +521,7 @@ def run_self_test(repo: Path) -> int:
         for item in failures:
             print(f"  - {item}")
         return 1
-    print("\nself-test OK: 3 correct patterns stay green, 5 regressions go red, "
-          "empty tree RC=2.")
+    print("\nself-test OK: 3 correct patterns stay green, 5 regressions go red, empty tree RC=2.")
     return 0
 
 
@@ -521,10 +530,16 @@ def main(argv: list[str] | None = None) -> int:
         description="Ratchet the static test-reference map; fail only on regression.",
     )
     parser.add_argument("root", nargs="?", default=".", help="repo root (default: cwd)")
-    parser.add_argument("--update-baseline", action="store_true",
-                        help="re-pin the high-water mark to today's numbers")
-    parser.add_argument("--self-test", action="store_true",
-                        help="verify the gate itself: correct code green, regressions red")
+    parser.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help="re-pin the high-water mark to today's numbers",
+    )
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        help="verify the gate itself: correct code green, regressions red",
+    )
     parser.add_argument("--quiet", action="store_true", help="exit code only")
     args = parser.parse_args(argv)
 
@@ -544,8 +559,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         path = write_baseline(repo, current)
         print(f"baseline pinned at {path}")
-        print(f"  referenced_modules = {current['referenced_modules']}"
-              f"/{current['total_modules']}")
+        print(f"  referenced_modules = {current['referenced_modules']}/{current['total_modules']}")
         print(f"  blind_loc          = {current['blind_loc']}/{current['total_loc']}")
         return 0
 
