@@ -25,7 +25,6 @@ Regression guard for the observed failure when the serve entrypoint skipped them
 """
 
 import ast
-
 from pathlib import Path
 
 import pytest
@@ -95,9 +94,9 @@ def test_serve_entry_registers_pi_policies(module):
     """The serve entry must pull in pi0/pi05 so their types land in the registries."""
     imported = _toplevel_imported_modules(SERVE_ENTRY)
     # Either the package or a submodule of it is enough to trigger registration.
-    assert any(
-        name == module or name.startswith(module + ".") for name in imported
-    ), f"{SERVE_ENTRY.name} does not import {module}; pi0/pi05 checkpoints will fail to serve"
+    assert any(name == module or name.startswith(module + ".") for name in imported), (
+        f"{SERVE_ENTRY.name} does not import {module}; pi0/pi05 checkpoints will fail to serve"
+    )
 
 
 def test_vla_package_still_does_not_import_pi():

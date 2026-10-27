@@ -97,15 +97,11 @@ def test_layout_step_must_run_first_negative_control():
     img = np.random.randint(0, 255, (4, 4, 3), dtype=np.uint8)
 
     # Wrong order: tensor first -> layout is a no-op, image stays HWC and 3-D.
-    wrong = layout.observation(
-        tensor_step.observation({"observation.images.image": img.copy()})
-    )
+    wrong = layout.observation(tensor_step.observation({"observation.images.image": img.copy()}))
     assert wrong["observation.images.image"].shape == (4, 4, 3)
 
     # Right order: layout first -> NCHW float, then converted to a tensor.
-    right = tensor_step.observation(
-        layout.observation({"observation.images.image": img.copy()})
-    )
+    right = tensor_step.observation(layout.observation({"observation.images.image": img.copy()}))
     out = right["observation.images.image"]
     assert isinstance(out, torch.Tensor)
     assert out.shape == (1, 3, 4, 4)

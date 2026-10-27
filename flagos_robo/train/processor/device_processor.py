@@ -26,11 +26,11 @@ from typing import Any
 
 import torch
 
-from flagos_robo.platforms import get_platform
-
 from .core import EnvTransition, PolicyAction, TransitionKey
 from .pipeline import ProcessorStep, ProcessorStepRegistry
 from flagos_robo.models.configs.types import PipelineFeatureType, PolicyFeature
+from flagos_robo.platforms import get_platform
+
 
 def _cur_platform():
     """Resolve the accelerator platform on demand, not at import time.

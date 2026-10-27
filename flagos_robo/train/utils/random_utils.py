@@ -22,10 +22,10 @@ import numpy as np
 import torch
 from safetensors.torch import load_file, save_file
 
-from flagos_robo.platforms import get_platform
-
 from flagos_robo.models.utils.constants import RNG_STATE
+from flagos_robo.platforms import get_platform
 from flagos_robo.train.datasets.utils import flatten_dict, unflatten_dict
+
 
 def _optional_platform():
     """Return the accelerator platform, or ``None`` when there is none.

@@ -160,7 +160,9 @@ class TestVariableBoundCallSite:
         from flagos_robo.train.utils import random_utils
 
         with pytest.raises(AttributeError, match="no_such_attribute"):
-            random_utils.no_such_attribute
+            # Bound to a name on purpose: a bare `random_utils.no_such_attribute`
+            # is a statement with no effect, which ruff rejects as B018.
+            _ = random_utils.no_such_attribute
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs a real accelerator")

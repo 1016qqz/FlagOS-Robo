@@ -24,7 +24,6 @@ must never reach them).
 import inspect
 
 import pytest
-
 from omegaconf import OmegaConf
 
 from flagos_robo.run import (
@@ -230,9 +229,9 @@ class TestRunnerSignatures:
     def test_serve_inference_run_takes_only_background_dryrun(self, cls):
         params = inspect.signature(cls.run).parameters
         assert set(params) - {"self"} == {"background", "dryrun"}
-        assert not any(
-            p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()
-        ), f"{cls.__name__}.run grew **kwargs; the keyword split in execute_action can be relaxed"
+        assert not any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()), (
+            f"{cls.__name__}.run grew **kwargs; the keyword split in execute_action can be relaxed"
+        )
 
     def test_train_run_accepts_monitoring_keywords(self):
         params = inspect.signature(SSHTrainRunner.run).parameters

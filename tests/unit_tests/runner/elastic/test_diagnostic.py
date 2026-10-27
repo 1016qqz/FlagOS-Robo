@@ -166,9 +166,7 @@ class TestDiagnostic:
         log_file = tmp_path / "rank0.log"
         log_file.write_text(sample_log_content)
 
-        generate_diagnostic_report(
-            mock_config, "localhost", 0, str(log_file), return_content=False
-        )
+        generate_diagnostic_report(mock_config, "localhost", 0, str(log_file), return_content=False)
 
         assert sorted(p.name for p in cwd.iterdir()) == []
 

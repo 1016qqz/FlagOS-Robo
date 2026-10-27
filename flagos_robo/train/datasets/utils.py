@@ -39,7 +39,6 @@ from datasets.utils.logging import disable_progress_bar, enable_progress_bar
 from huggingface_hub import DatasetCard, DatasetCardData, HfApi
 from huggingface_hub.errors import RevisionNotFoundError
 from PIL import Image as PILImage
-from torchvision import transforms
 
 from flagos_robo.models.configs.types import FeatureType, PolicyFeature
 from flagos_robo.models.utils.constants import ACTION, OBS_ENV_STATE, OBS_STR
@@ -464,6 +463,13 @@ def hf_transform_to_torch(items_dict: dict[str, list[Any]]) -> dict[str, list[to
     for key in items_dict:
         first_item = items_dict[key][0]
         if isinstance(first_item, PILImage.Image):
+            # Imported lazily: torchvision is a CUDA-tier dependency (it hard-pins
+            # torch==2.9.0 and ships compiled extensions, so it is deliberately
+            # absent from requirements/common.txt). Keeping this at module scope
+            # made the whole module -- and therefore train.utils.random_utils,
+            # which only needs flatten_dict -- unimportable on the CPU tier.
+            from torchvision import transforms
+
             to_tensor = transforms.ToTensor()
             items_dict[key] = [to_tensor(img) for img in items_dict[key]]
         elif first_item is None:

@@ -19,7 +19,6 @@ import signal
 import subprocess
 
 import psutil
-
 from omegaconf import DictConfig, OmegaConf
 
 from flagos_robo.runner.runner_base_legacy import JobStatus, RunnerBase
@@ -67,15 +66,12 @@ def _get_args_serve(config: DictConfig):
 
 
 def _update_config_serve(config: DictConfig):
-
     exp_dir = setup_exp_dir(config)
 
     OmegaConf.set_struct(config, False)
 
-
     if config.get("logging", None) is None:
         config.logging = DictConfig({})
-
 
     setup_logging_dirs(config.logging, exp_dir, log_subdir="serve_logs")
 
@@ -182,7 +178,6 @@ def _generate_stop_script(config, host, node_rank):
         after_stop = cmds_config.get("after_stop", "")
     else:
         after_stop = ""
-
 
     cmds_config = config.experiment.get("cmds", None)
     if cmds_config:

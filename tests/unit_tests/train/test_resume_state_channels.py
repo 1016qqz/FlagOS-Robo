@@ -61,9 +61,7 @@ def _called_name(node):
 
 def _calls(tree, name):
     return [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and _called_name(node) == name
+        node for node in ast.walk(tree) if isinstance(node, ast.Call) and _called_name(node) == name
     ]
 
 
@@ -116,8 +114,7 @@ def test_sampler_state_is_handed_to_save_checkpoint(entry_point):
         assert state is not None, (
             f"save_checkpoint() at line {save.lineno} passes no dataloader_state"
         )
-        assert _calls(ast.Module(body=[ast.Expr(value=state)], type_ignores=[]),
-                      "state_dict"), (
+        assert _calls(ast.Module(body=[ast.Expr(value=state)], type_ignores=[]), "state_dict"), (
             "dataloader_state must come from the sampler's state_dict()"
         )
 
@@ -240,9 +237,7 @@ def test_checkpoint_dir_is_computed_outside_the_main_process_guard(entry_point):
         and isinstance(node.test, ast.Name)
         and node.test.id == "is_main_process"
     ]
-    guarded_spans = [
-        (g.body[0].lineno, g.body[-1].end_lineno) for g in main_guards if g.body
-    ]
+    guarded_spans = [(g.body[0].lineno, g.body[-1].end_lineno) for g in main_guards if g.body]
 
     for call in dir_calls:
         inside = [s for s in guarded_spans if s[0] <= call.lineno <= s[1]]
@@ -258,9 +253,7 @@ def test_rng_filename_is_rank_scoped_with_a_legacy_fallback():
     source = RANDOM_UTILS.read_text(encoding="utf-8")
     tree = ast.parse(source)
 
-    names = {
-        node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
-    }
+    names = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
     assert "rng_state_filename" in names, "no rank-scoped RNG filename helper"
 
     for fn in ("save_rng_state", "load_rng_state"):
