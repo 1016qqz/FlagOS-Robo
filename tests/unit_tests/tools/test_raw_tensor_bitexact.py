@@ -64,19 +64,75 @@ def _one_ulp_up(t, idx: int = 0):
 #   (256, 256)      2/300  (1%)         99%
 #
 # Summary stats therefore hide the delta in the overwhelming majority of cases,
-# but not always. Both directions are pinned below using seeds chosen by that
-# MEASUREMENT, not by guesswork: an earlier version asserted universal
-# absorption on a random tensor and flaked, and two hand-built "obviously
-# absorbing" cases (all-ones, and one dominant 1e8 element) were also wrong --
-# ones(4, 8) absorbs the delta, which is the opposite of what I predicted.
-_ABSORBING_SEED = 0  # sum() identical despite a real 1-ULP difference
-_SURVIVING_SEED = 8  # sum() differs -- absorption is not guaranteed
+# but not always, so both directions must be exercised. An earlier version
+# asserted universal absorption on a random tensor and flaked, and two
+# hand-built "obviously absorbing" cases (all-ones, and one dominant 1e8
+# element) were also wrong -- ones(4, 8) absorbs the delta, which is the
+# opposite of what was predicted. Hand-picking inputs does not work here.
+#
+# W6 note on why these seeds are SEARCHED and not pinned: the two constants
+# used to be literals (0 and 8) measured in the CI container. Re-measuring on
+# macOS arm64 gave 95/97/100% absorption instead of 88/98/99% -- the PHENOMENON
+# is portable but the per-seed outcome is not, because randn's stream and the
+# reduction order are both platform-dependent. A pinned seed is therefore a
+# latent red on any machine that is not the one it was measured on. Searching
+# at runtime asserts the same two properties without betting on either.
 
 
 def _seeded_pair(seed: int, shape=(4, 8)):
     torch.manual_seed(seed)
     a = torch.randn(*shape)
     return a, _one_ulp_up(a)
+
+
+_SEED_SEARCH_LIMIT = 512
+
+
+def _find_seed(predicate, what: str, shape=(4, 8)) -> int:
+    """Return the first seed in ``range(_SEED_SEARCH_LIMIT)`` satisfying ``predicate``.
+
+    ``predicate`` takes the (original, 1-ULP-bumped) pair. Raises rather than
+    skipping: if NO seed in the window exhibits the behaviour, that is a real
+    finding about this platform's float32 reductions and must be visible, not
+    quietly skipped into a green run.
+    """
+    for seed in range(_SEED_SEARCH_LIMIT):
+        a, b = _seeded_pair(seed, shape)
+        if predicate(a, b):
+            return seed
+    raise AssertionError(
+        f"no seed in [0, {_SEED_SEARCH_LIMIT}) produced {what} for shape {shape} "
+        f"on this platform (torch {torch.__version__}); the premise of the "
+        f"bit-exactness fix cannot be asserted here -- investigate rather than skip."
+    )
+
+
+def _absorbs_all_three(a, b) -> bool:
+    """sum AND mean AND norm all blind to the delta.
+
+    All three are required, not just sum: a seed found by the sum criterion
+    alone does not guarantee mean/norm also match, which would make
+    ``test_mean_and_norm_are_also_blind`` randomly red.
+    """
+    return (
+        a.sum().item() == b.sum().item()
+        and a.mean().item() == b.mean().item()
+        and a.norm().item() == b.norm().item()
+    )
+
+
+_ABSORBING_SEED = _find_seed(
+    _absorbs_all_three, "sum/mean/norm all identical despite a real 1-ULP difference"
+)
+_SURVIVING_SEED = _find_seed(
+    lambda a, b: a.sum().item() != b.sum().item(),
+    "a sum() that differs (absorption is not guaranteed)",
+)
+
+print(
+    f"[bitexact] searched seeds on torch {torch.__version__}: "
+    f"absorbing={_ABSORBING_SEED} surviving={_SURVIVING_SEED}"
+)
 
 
 class TestSummaryStatsCannotProveBitExactness:

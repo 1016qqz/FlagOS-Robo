@@ -19,10 +19,14 @@ the chained form ``get_platform().<method>``, which structurally cannot see a
 caller that binds the platform to a variable first. ``random_utils.py`` does
 exactly that::
 
-    cur_platform = get_platform()
+    cur_platform = _cur_platform()
     ...
-    cur_platform.get_rng_state()      # line 94
-    cur_platform.set_rng_state(...)   # line 104
+    cur_platform.get_rng_state()      # line 125
+    cur_platform.set_rng_state(...)   # line 136
+
+(W6 made that binding lazy -- it was a module-level
+``cur_platform = get_platform()`` resolved at import, which no accelerator-less
+host could import. The variable-bound *shape* this file guards is unchanged.)
 
 So ``get_rng_state`` / ``set_rng_state`` were absent from ``PlatformBase``
 until W2 pulled that file in. Signatures follow Megatron-LM-FL
@@ -95,12 +99,53 @@ class TestRngContract:
 class TestVariableBoundCallSite:
     """Guards the specific shape of caller that the W1 grep missed."""
 
-    def test_consumer_calls_via_bound_variable(self):
+    @pytest.fixture
+    def registry_has_cuda(self, monkeypatch):
+        """Make a platform resolvable regardless of what hardware is present.
+
+        ``PLATFORMS`` is populated only for backends whose ``is_available()``
+        returns True, so on a host with no accelerator it is empty and
+        ``get_platform()`` raises. Injecting an entry keeps the assertion about
+        *call shape* testable there. Requested explicitly, not autouse: the
+        import test above must see the registry untouched.
+        """
+        from flagos_robo.platforms import platform_manager, reset_platform
+
+        if "cuda" not in platform_manager.PLATFORMS:
+            monkeypatch.setitem(platform_manager.PLATFORMS, "cuda", PlatformCUDA())
+        reset_platform()
+        yield
+        reset_platform()
+
+    def test_importing_the_consumer_needs_no_accelerator(self):
+        """Importing ``random_utils`` must not resolve a platform.
+
+        It used to, via a module-level ``cur_platform = get_platform()``, which
+        made the module unimportable wherever the registry is empty (no
+        accelerator) -- ``get_platform()`` raises RuntimeError there. That is a
+        plain import-time side effect, not a requirement of the module: both
+        consumers guard their use with ``is_available()``. This test is the
+        negative control for that fix, so a future edit cannot quietly put the
+        eager lookup back.
+        """
+        pytest.importorskip("datasets", reason="random_utils imports datasets.utils")
+        import importlib
+
+        from flagos_robo.train.utils import random_utils
+
+        importlib.reload(random_utils)  # a fresh import, registry state untouched
+
+    def test_consumer_calls_via_bound_variable(self, registry_has_cuda):
         """``random_utils`` must still reach the platform through a variable.
 
         If someone rewrites it to the chained form this test is free to be
         deleted - but then the W1 blind spot no longer applies either. Keeping
         it asserts the module really exercises the variable-bound path.
+
+        The lookup is now lazy (module ``__getattr__``, PEP 562), so reading
+        the attribute is what resolves the platform -- hence the registry entry
+        has to exist at read time, which is what the injection below provides on
+        a host with no real device.
         """
         pytest.importorskip("datasets", reason="random_utils imports datasets.utils")
         from flagos_robo.train.utils import random_utils
@@ -108,6 +153,14 @@ class TestVariableBoundCallSite:
         assert isinstance(random_utils.cur_platform, PlatformBase)
         for name in RNG_METHODS:
             assert callable(getattr(random_utils.cur_platform, name))
+
+    def test_unknown_attribute_still_raises(self):
+        """The ``__getattr__`` hook must not swallow genuine typos."""
+        pytest.importorskip("datasets", reason="random_utils imports datasets.utils")
+        from flagos_robo.train.utils import random_utils
+
+        with pytest.raises(AttributeError, match="no_such_attribute"):
+            random_utils.no_such_attribute
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs a real accelerator")

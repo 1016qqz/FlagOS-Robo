@@ -126,6 +126,29 @@ class TestPlatformContract:
 
 
 class TestEnvOverride:
+    """Override-resolution tests, decoupled from what hardware is present.
+
+    Five of these cases name ``"cuda"`` literally, and registration in
+    ``PLATFORMS`` is gated on ``is_available()`` (``platform_manager.py``
+    registers a backend only when its runtime reports a device). On a machine
+    with no accelerator the registry is therefore empty, and every one of them
+    failed for a reason that has nothing to do with the override logic they
+    exist to pin: ``get_platform()`` either raised ValueError ("cuda is not
+    available") or RuntimeError ("No available platform").
+
+    The fixture below injects a ``"cuda"`` entry only when the real registry
+    does not already have one, so the resolution *rules* -- priority, the
+    deprecation warning, the conflict warning, trimming and case folding,
+    empty-value fall-through -- are what gets tested, on any host. On a real
+    CUDA box nothing is injected and the behaviour is unchanged.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _registry_has_cuda(self, _clean_platform_state, monkeypatch):
+        if "cuda" not in platform_manager.PLATFORMS:
+            monkeypatch.setitem(platform_manager.PLATFORMS, "cuda", PlatformCUDA())
+            reset_platform()
+
     def test_new_env_var_selects_platform(self):
         os.environ[PLATFORM_ENV_VAR] = "cuda"
         assert get_platform().name() == "cuda"

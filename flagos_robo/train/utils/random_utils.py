@@ -27,7 +27,58 @@ from flagos_robo.platforms import get_platform
 from flagos_robo.models.utils.constants import RNG_STATE
 from flagos_robo.train.datasets.utils import flatten_dict, unflatten_dict
 
-cur_platform = get_platform()
+def _optional_platform():
+    """Return the accelerator platform, or ``None`` when there is none.
+
+    The two RNG helpers below both ask the same question -- "is there an
+    accelerator whose RNG state I should also save/restore?" -- and both guard
+    the answer with ``is_available()``. On a host with no accelerator the
+    registry is empty and ``get_platform()`` raises RuntimeError
+    (``platform_manager.py:89``), which turns that question into a crash
+    instead of a "no". Checkpointing on CPU is a supported path
+    (``device_processor.get_safe_torch_device`` accepts "cpu"), so the honest
+    answer there is ``None`` and the caller skips the accelerator half.
+
+    This is deliberately narrower than ``_cur_platform()``: anything that
+    genuinely *needs* a device must keep getting the RuntimeError.
+    """
+    try:
+        return get_platform()
+    except RuntimeError:
+        return None
+
+
+def _cur_platform():
+    """Resolve the accelerator platform on demand, not at import time.
+
+    This used to be a module-level ``cur_platform = get_platform()``. That made
+    importing this module impossible on a machine with no accelerator, because
+    ``get_platform()`` raises RuntimeError when the registry is empty
+    (``platform_manager.py:89``) -- registration is gated on ``is_available()``.
+    The no-accelerator CI job could therefore not even collect the tests that
+    import this file.
+
+    Only the two RNG helpers below need the platform, and both of them guard
+    the use with ``is_available()``, so deferring the lookup costs nothing and
+    does not change behaviour on a machine that does have an accelerator.
+    """
+    return get_platform()
+
+
+def __getattr__(name):
+    """Keep ``random_utils.cur_platform`` readable as a module attribute.
+
+    ``tests/unit_tests/platforms/test_platform_rng.py:108`` asserts this
+    attribute is a PlatformBase instance -- it guards the variable-bound call
+    shape that the W1 API survey's grep for ``get_platform().<method>`` could
+    not see. Resolving it through the module ``__getattr__`` hook (PEP 562)
+    keeps that assertion meaningful while still deferring the lookup, so the
+    RuntimeError now surfaces when the attribute is read rather than when the
+    module is imported.
+    """
+    if name == "cur_platform":
+        return get_platform()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def serialize_python_rng_state() -> dict[str, torch.Tensor]:
@@ -90,7 +141,8 @@ def serialize_torch_rng_state() -> dict[str, torch.Tensor]:
     `safetensors.save_file()` or `torch.save()`.
     """
     torch_rng_state_dict = {"torch_rng_state": torch.get_rng_state()}
-    if cur_platform.is_available():
+    cur_platform = _optional_platform()
+    if cur_platform is not None and cur_platform.is_available():
         torch_rng_state_dict["torch_cuda_rng_state"] = cur_platform.get_rng_state()
     return torch_rng_state_dict
 
@@ -100,7 +152,12 @@ def deserialize_torch_rng_state(rng_state_dict: dict[str, torch.Tensor]) -> None
     Restores the rng state for `torch` from a dictionary produced by `serialize_torch_rng_state()`.
     """
     torch.set_rng_state(rng_state_dict["torch_rng_state"])
-    if cur_platform.is_available() and "torch_cuda_rng_state" in rng_state_dict:
+    cur_platform = _optional_platform()
+    if (
+        cur_platform is not None
+        and cur_platform.is_available()
+        and "torch_cuda_rng_state" in rng_state_dict
+    ):
         cur_platform.set_rng_state(rng_state_dict["torch_cuda_rng_state"])
 
 
@@ -134,13 +191,65 @@ def deserialize_rng_state(rng_state_dict: dict[str, torch.Tensor]) -> None:
     deserialize_torch_rng_state(torch_rng_state_dict)
 
 
-def save_rng_state(save_dir: Path) -> None:
+def rng_state_filename(rank: int) -> str:
+    """Return the RNG state filename for ``rank``.
+
+    Every rank advances its own python/numpy/torch streams: the dataloader hands
+    each rank a different shard, and dropout/noise draw per device. A single
+    shared file therefore cannot describe the cluster — whichever rank wrote it
+    last would win, and on resume every rank would adopt that one rank's stream.
+    So each rank gets its own file.
+
+    ``rank`` is required. The legacy shared name is deliberately NOT reachable
+    through this function: new code never writes it, and ``load_rng_state``
+    reads it straight from the ``RNG_STATE`` constant. A ``None`` sentinel here
+    would also clash with ``save_rng_state(rank=None)``, where ``None`` means
+    "detect my own rank" rather than "use the legacy name".
+    """
+    stem, _, suffix = RNG_STATE.rpartition(".")
+    return f"{stem}_rank{rank}.{suffix}"
+
+
+def _current_rank() -> int:
+    """Rank of this process, or 0 when not running under torch.distributed."""
+    if torch.distributed.is_available() and torch.distributed.is_initialized():
+        return torch.distributed.get_rank()
+    return 0
+
+
+def save_rng_state(save_dir: Path, rank: int | None = None) -> None:
+    """Persist this rank's RNG state.
+
+    Must be called by EVERY rank, not just the main process: the file name is
+    rank-scoped, so a main-process-only call would leave the other ranks with
+    no state to restore.
+    """
+    if rank is None:
+        rank = _current_rank()
+    save_dir.mkdir(parents=True, exist_ok=True)
     rng_state_dict = serialize_rng_state()
     flat_rng_state_dict = flatten_dict(rng_state_dict)
-    save_file(flat_rng_state_dict, save_dir / RNG_STATE)
+    save_file(flat_rng_state_dict, save_dir / rng_state_filename(rank))
 
 
-def load_rng_state(save_dir: Path) -> None:
-    flat_rng_state_dict = load_file(save_dir / RNG_STATE)
+def load_rng_state(save_dir: Path, rank: int | None = None) -> None:
+    """Restore this rank's RNG state.
+
+    Prefers the rank-scoped file. Falls back to the legacy shared file so that
+    checkpoints written before per-rank saving existed remain resumable; raises
+    FileNotFoundError only when neither is present.
+    """
+    if rank is None:
+        rank = _current_rank()
+    path = save_dir / rng_state_filename(rank)
+    if not path.exists():
+        legacy = save_dir / RNG_STATE
+        if not legacy.exists():
+            raise FileNotFoundError(
+                f"no RNG state for rank {rank}: neither {path.name} nor {legacy.name} "
+                f"exists in {save_dir}"
+            )
+        path = legacy
+    flat_rng_state_dict = load_file(path)
     rng_state_dict = unflatten_dict(flat_rng_state_dict)
     deserialize_rng_state(rng_state_dict)

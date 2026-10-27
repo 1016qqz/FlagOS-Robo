@@ -85,9 +85,11 @@ class PlatformBase(ABC):
         Added in W2 alongside the ``train/utils/`` batch. The W1 API survey
         only grepped the chained form ``get_platform().X``, so it never saw
         ``random_utils.py``, which binds the platform to a variable first
-        (``cur_platform = get_platform()``) and then calls
-        ``cur_platform.get_rng_state()`` at line 94 to build the checkpoint
-        RNG dict. Signature follows Megatron-LM-FL
+        and then calls ``cur_platform.get_rng_state()`` at line 146 to build
+        the checkpoint RNG dict. W6 made that binding lazy (the module-level
+        ``cur_platform = get_platform()`` became ``_optional_platform()``
+        inside the function), so the call site moved but the shape did not.
+        Signature follows Megatron-LM-FL
         ``megatron/plugin/platform/platform_base.py:106``.
         """
         ...
@@ -97,7 +99,7 @@ class PlatformBase(ABC):
         """Restore the RNG state onto ``device_index`` (current when None).
 
         Counterpart of :meth:`get_rng_state`, called by ``random_utils.py``
-        line 104 when resuming from a checkpoint. Signature follows
+        line 161 when resuming from a checkpoint. Signature follows
         Megatron-LM-FL ``megatron/plugin/platform/platform_base.py:102``.
         """
         ...

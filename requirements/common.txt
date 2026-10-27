@@ -64,6 +64,63 @@ huggingface-hub==0.36.0
 safetensors==0.7.0
 typing-extensions==4.15.0
 packaging==25.0
+# psutil: flagos_robo/runner/runner_serve.py:21 imports it at module level to
+# walk and terminate the serve process tree. It was never declared anywhere in
+# requirements/, which is what tools/check_dep_drift.py flags. It belongs in
+# common.txt rather than a hardware tier because process management is
+# platform-agnostic. Version is the current release at the time of writing;
+# the API used (process_iter / Process.children / terminate) has been stable
+# for years, so the pin is for reproducibility rather than compatibility.
+psutil==7.1.3
+
+# Model / data libraries that are pure Python and torch-agnostic.
+#
+# These four were declared only under requirements/cuda/ even though none of
+# them contains compiled code or pins a torch build (verified with
+# `pip install --dry-run`: all four resolve to py3-none-any wheels and none
+# pulls in torch). The consequence was that a no-accelerator CI job had to
+# install the CUDA tier to run unit tests, which defeats the point of the
+# tiers -- and in practice meant 25 collection errors and zero tests executed.
+#
+# torchvision is deliberately NOT here. It ships compiled extensions and
+# hard-pins torch==2.9.0, so putting it in common.txt would drag the generic
+# CUDA torch build into requirements/ascend/base.txt and requirements/musa/
+# base.txt, which inherit this file and expect torch_npu / torch_musa. It
+# stays per-platform: requirements/cuda/base.txt for CUDA, and an explicit
+# CPU-index install in the tests-cpu CI job.
+transformers==4.57.6
+datasets==4.5.0
+diffusers==0.36.0
+einops==0.8.2
+
+# draccus joined this group in W6 for the same reason, found one layer deeper:
+# it is imported by models/pi0/configuration_pi0.py and models/pi05/
+# configuration_pi05.py -- i.e. by MODEL CONFIG code, which the serve, train
+# and inference paths all import. It was declared only in cuda/base.txt, so
+# `from flagos_robo.serve.run_serve_vla import ...` raised ModuleNotFoundError
+# on a no-accelerator box. Resolves to py3-none-any and pulls only pure-Python
+# deps (mergedeep, pyyaml-include, toml, typing-inspect, mypy_extensions).
+#
+# Four other packages were found missing by the same import scan and are
+# deliberately LEFT in their tiers, because their tier is correct:
+#   av / torchcodec  (cuda/base.txt)  video decode, train datasets only
+#   peft / accelerate (cuda/train.txt) LoRA, train-only
+#   flash_attn       (cuda/base.txt)  needs compilation + CUDA
+#   flag_gems, torch_npu, torch_musa, torch_txda  vendor stacks, and
+#     platforms/platform_*.py already imports them defensively
+#   tree             gr00t-only
+# See the W6 handover for how that split was measured.
+draccus==0.11.5
+
+# websockets / msgpack are the serve-path wire format and transport. Both are
+# reachable from tests/unit_tests/serve/ (run_serve_vla.py:57 imports
+# websocket_policy_server), both resolve with ZERO extra dependencies, and
+# neither touches torch. They were declared only in requirements/cuda/
+# serve.txt -- and note there is no ascend/serve.txt or musa/serve.txt at all,
+# so those tiers could not serve regardless. Putting them here fixes the unit
+# tests and closes that gap in one move.
+websockets==15.0.1
+msgpack==1.1.2
 
 # Utilities
 tqdm==4.67.1

@@ -25,9 +25,18 @@ class TestDiagnostic:
     """Test cases for diagnostic module"""
 
     @pytest.fixture
-    def mock_config(self):
-        """Mock config object"""
-        return MagicMock()
+    def mock_config(self, tmp_path):
+        """Mock config object.
+
+        ``log_dir`` must be a real string path: diagnostic.generate_diagnostic_report
+        calls ``os.makedirs(os.path.join(log_dir, "monitor"))`` unconditionally, so a
+        bare ``MagicMock()`` leaks a ``MagicMock/`` directory into the current working
+        directory (the repo root under pytest). Pointing it at ``tmp_path`` keeps the
+        filesystem side effect inside the per-test temporary directory.
+        """
+        config = MagicMock()
+        config.train.system.logging.log_dir = str(tmp_path)
+        return config
 
     @pytest.fixture
     def sample_log_content(self):
@@ -138,6 +147,30 @@ class TestDiagnostic:
             assert "diagnostic" in result_path or result_path.endswith(".txt")
         finally:
             os.unlink(temp_path)
+
+    def test_report_writes_nothing_into_the_working_directory(
+        self, mock_config, sample_log_content, tmp_path, monkeypatch
+    ):
+        """Regression: the report must not create directories in the caller's cwd.
+
+        diagnostic.generate_diagnostic_report calls os.makedirs on paths derived from
+        ``config.train.system.logging.log_dir``. When that attribute was left as a bare
+        MagicMock, ``str(mock)`` became a relative path and a ``MagicMock/`` directory
+        appeared in whatever cwd pytest ran from -- the repo root. This pins the
+        side-effect boundary: run from an empty cwd, nothing new may show up there.
+        """
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+
+        log_file = tmp_path / "rank0.log"
+        log_file.write_text(sample_log_content)
+
+        generate_diagnostic_report(
+            mock_config, "localhost", 0, str(log_file), return_content=False
+        )
+
+        assert sorted(p.name for p in cwd.iterdir()) == []
 
     @patch("flagos_robo.runner.elastic.diagnostic.logger")
     def test_generate_diagnostic_report_read_error(self, mock_logger, mock_config):

@@ -132,18 +132,26 @@ class TestFlagsExist:
 # a decision, so it carries its reason. Anything NOT listed here is a drift and
 # goes red; and an entry that stops being a real gap also goes red, so closing
 # the gap forces the allowlist to shrink instead of silently rotting.
-KNOWN_UNWIRED_CHECKERS = {
-    "tools/check_conf_paths.py": (
-        "deferred to the dedicated CI workstream together with promoting "
-        "gates.sh into the repo as tools/run_gates.sh (review items B/B')"
-    ),
+KNOWN_UNWIRED_CHECKERS: dict[str, str] = {
+    # W6 emptied this. check_conf_paths.py was the only entry (review items
+    # B/B') and is now wired into tests-cpu, so it had to leave the allowlist in
+    # the same commit -- the healed-entry assertion below exists to force that.
+    #
+    # An empty dict is the correct resting state: every checker in tools/ is
+    # invoked by CI. A new entry here must carry its reason, and must be removed
+    # the moment the gap closes.
 }
-KNOWN_GATES_SCRIPT_GAPS = {
-    "tools/compare_precision.py": (
-        "gates.sh predates compare_precision.py's --self-test; wiring it is "
-        "part of the same deferred CI workstream (review item N)"
-    ),
+KNOWN_GATES_SCRIPT_GAPS: dict[str, str] = {
+    # W6 emptied this too. The gap belonged to the out-of-tree robo_file/_ops/
+    # gates.sh, which predated compare_precision.py --self-test and could not be
+    # cloned with the project. tools/run_gates.sh replaces it (review item N)
+    # and runs all nine checkers, so the single entry had to leave in the same
+    # commit -- the healed-entry assertion below forces that.
 }
+
+# The local mirror of CI. Single source: it ships with the clone, so there is no
+# fallback path to fall back TO -- a missing file is a defect, not a skip.
+GATES_SCRIPT = REPO_ROOT / "tools" / "run_gates.sh"
 
 
 class TestEveryGateIsWired:
@@ -181,15 +189,25 @@ class TestEveryGateIsWired:
         )
 
     def test_local_gates_script_covers_the_checkers_ci_trusts(self, wf_flat):
-        """gates.sh is the local mirror of CI; a one-directional containment.
+        """The gates script is the local mirror of CI; one-directional containment.
 
-        gates.sh may run extra ad-hoc probes, but it must not MISS a checker CI
-        trusts -- otherwise a local green run does not predict the CI verdict.
+        It may run extra ad-hoc probes, but it must not MISS a checker CI trusts
+        -- otherwise a local green run does not predict the CI verdict.
+
+        W6 moved this script in-repo (tools/run_gates.sh). Before that it lived
+        at ../robo_file/_ops/gates.sh, outside the repo, so a fresh clone had no
+        local mirror at all and this test skipped itself into silence. Asserting
+        the in-repo script EXISTS is the point: it is now a shipped artifact, so
+        its absence is a defect, not a reason to skip.
         """
-        gates = REPO_ROOT.parent / "robo_file" / "_ops" / "gates.sh"
-        if not gates.exists():
-            pytest.skip(f"local gates script not present at {gates}")
-        text = gates.read_text()
+        assert GATES_SCRIPT.exists(), (
+            "tools/run_gates.sh is missing -- a clone would have no local mirror "
+            "of CI, which is the gap W6 closed (review item N)"
+        )
+        # Read ONLY the in-repo script. Unioning it with the legacy out-of-tree
+        # copy would let that copy's coverage mask a gap in the shipped one,
+        # which is the exact failure this test is for.
+        text = GATES_SCRIPT.read_text()
         ci_tools = {t for t, _ in _tool_invocations(wf_flat) if (REPO_ROOT / t).exists()}
         assert ci_tools, "no existing tools parsed out of CI -- zero-work check"
         missing = sorted(

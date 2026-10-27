@@ -15,23 +15,23 @@
 # Policy-serving dependencies for flagos_robo/serve.
 #
 # Derived from FlagScale requirements/cuda/serve.txt @ baseline f8e9a62c, but
-# only the two pins the migrated serve code actually imports. Upstream's
-# serve.txt also carries vllm, ray, gymnasium, dm-tree, websocket-client and
-# websocket; none of those appear in an import statement under
-# flagos_robo/serve (checked with an AST scan of the subtree, which reports
-# exactly: PIL, msgpack, numpy, omegaconf, torch, websockets). The vllm wheel
-# in particular is an LLM-inference dependency with no robotics policy-serving
-# role, so it is deliberately not carried over.
+# only the pins the migrated serve code actually imports. Upstream's serve.txt
+# also carries vllm, ray, gymnasium, dm-tree, websocket-client and websocket;
+# none of those appear in an import statement under flagos_robo/serve (checked
+# with an AST scan of the subtree, which reports exactly: PIL, msgpack, numpy,
+# omegaconf, torch, websockets). The vllm wheel in particular is an
+# LLM-inference dependency with no robotics policy-serving role, so it is
+# deliberately not carried over.
+#
+# W6 note -- this file now declares nothing of its own. Its two former pins,
+# websockets and msgpack, moved up to requirements/common.txt because:
+#   (a) both are pure-python with zero extra dependencies and no torch tie, so
+#       they do not belong in a hardware tier at all;
+#   (b) tests/unit_tests/serve/ imports them, and the CPU unit-test job never
+#       installs a cuda/ file, so declaring them here made the suite red;
+#   (c) there is no ascend/serve.txt or musa/serve.txt, so a serve-tier-only
+#       declaration left those two platforms unable to serve at all.
+# The file is kept so `-r requirements/cuda/serve.txt` stays a valid install
+# target and so a future serve-only, cuda-only pin has a home.
 
 -r ./base.txt
-
-# websockets: flagos_robo/serve/websocket_policy_server.py:24-25 imports
-# `websockets.asyncio.server` and `websockets.frames`. The asyncio.server
-# submodule is the v12+ API, so a floor matters here; version matches
-# upstream FlagScale's pin.
-websockets==15.0.1
-# msgpack: flagos_robo/serve/msgpack_numpy.py:34 -- the wire codec for policy
-# requests/responses. Upstream pins 1.1.0; 1.1.2 is the version the H800
-# container (conda env flagscale-train, python 3.12.0) runs, which is where
-# this serve path was exercised, so the pin follows the verified environment.
-msgpack==1.1.2

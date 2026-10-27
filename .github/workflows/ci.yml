@@ -18,10 +18,14 @@
 name: CI
 
 on:
+  # `dev_*` covers the per-developer integration branches (dev_zqq_v2.3 and its
+  # successors). Without it a push to the branch the work actually happens on
+  # triggers nothing, and the gates below only ever run at merge time -- which
+  # defeats the point of having them.
   push:
-    branches: [main, dev]
+    branches: [main, dev, 'dev_*']
   pull_request:
-    branches: [main, dev]
+    branches: [main, dev, 'dev_*']
   workflow_dispatch:
 
 concurrency:
@@ -162,12 +166,37 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install dev deps only
-        # No torch here. The GPU-dependent tests skip themselves; see tests-gpu.
+      - name: Install CPU torch + the platform-neutral requirement tier
+        # W6: this job used to install requirements/dev.txt only, with the
+        # comment "No torch here." That was never true of the test suite --
+        # tests/unit_tests imports torch at module level in many files, so the
+        # step below collected 25 errors and the job had never been green. Nor
+        # can it be fixed by skipping: a suite that cannot import is not a
+        # suite that skips, it is a suite that does not run.
+        #
+        # CPU torch from download.pytorch.org/whl/cpu keeps this job on a
+        # plain ubuntu-latest runner with no GPU and no CUDA wheels. The
+        # separate tests-gpu job still owns anything needing a real device;
+        # those tests carry their own skip markers (9 of them today).
+        #
+        # requirements/common.txt is the platform-neutral tier -- no torch pin,
+        # no vendor stack -- so installing it here does not smuggle a CUDA
+        # dependency into a CPU job. It is also what makes the suite importable:
+        # transformers/datasets/diffusers/einops/draccus/websockets/msgpack/
+        # psutil all live there as of W6.
+        #
+        # --no-deps is gone from `pip install -e .`: it was what let a missing
+        # declaration pass unnoticed, which is the bug class this job exists to
+        # catch. With deps resolved, an undeclared import fails HERE.
         run: |
           pip install -r requirements/dev.txt
-          pip install -e . --no-deps
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements/common.txt
+          pip install -e .
       - name: Unit tests (CPU subset)
+        # Collection errors must be zero. pytest exits non-zero on a collection
+        # error, so a regression here fails the job rather than silently
+        # shrinking the suite -- which is exactly what happened before W6.
         run: pytest tests/unit_tests -q
 
       - name: Precision tool negative control
@@ -183,6 +212,34 @@ jobs:
         # deliberate drop needs --update-baseline in the same commit, which puts
         # the new number in the diff where a reviewer sees it.
         run: python tools/check_test_coverage.py .
+
+      - name: Prove the conf-path audit can fail (negative control)
+        run: python tools/check_conf_paths.py --self-test
+
+      - name: Every conf input path resolves and is non-empty
+        # W6 wired this gate (review items B/B'). What it can check on a runner
+        # is narrower than what it checks in a training image, and the narrowing
+        # is deliberate rather than a workaround:
+        #
+        # The conf files pin absolute paths like /workspace/models/lerobot/
+        # pi0_base, which exist only inside the training image. On ubuntu-latest
+        # they never exist, so a bare real scan returns 1 by construction --
+        # measured, not assumed: `python tools/check_conf_paths.py
+        # examples/pi0/conf/train.yaml` reports 3 MISSING paths. Existence of a
+        # model weight is an ENVIRONMENT property; asserting it here would make
+        # the job permanently red and teach everyone to ignore it.
+        #
+        # Pointing the three documented overrides at a directory that does exist
+        # keeps the ENVIRONMENT-INDEPENDENT half of the gate, which is the half
+        # that catches conf bugs: the defaults list must compose, every
+        # ${...} interpolation must resolve, and no input key may be empty. A
+        # broken defaults group still exits 2 here; a blanked-out value still
+        # exits 1. Only "does this weight file exist" is deferred to the image.
+        env:
+          FLAGOS_CHECKPOINT_DIR: ${{ github.workspace }}
+          FLAGOS_TOKENIZER_PATH: ${{ github.workspace }}
+          FLAGOS_DATA_PATH: ${{ github.workspace }}
+        run: python tools/check_conf_paths.py examples/*/conf/*.yaml
 
       - name: Prove the leaf-import probe can fail (negative control)
         run: python tools/check_leaf_import.py --self-test
@@ -204,7 +261,12 @@ jobs:
   # Needs a CUDA runner. Skipped on forks (no access to self-hosted labels)
   # rather than failed, so external contributions stay mergeable.
   tests-gpu:
-    if: github.event_name == 'workflow_dispatch' || github.repository_owner == 'FlagOpen'
+    # The owner literal must match the upstream org exactly. It read 'FlagOpen'
+    # through W6, but the org is `flagos-ai` (confirmed via the repos API:
+    # owner.login == 'flagos-ai'), so the comparison was dead and this job was
+    # silently skipped on every push -- including pushes to upstream. That is
+    # why the GPU half of this file had never executed on a real runner.
+    if: github.event_name == 'workflow_dispatch' || github.repository_owner == 'flagos-ai'
     runs-on: [self-hosted, linux, cuda]
     container:
       image: harbor.baai.ac.cn/flagscale/flagscale:cuda12.8-cudnn9.7-python3.12-torch2.7.1-time2507101104

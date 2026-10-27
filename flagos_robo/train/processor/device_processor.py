@@ -32,14 +32,29 @@ from .core import EnvTransition, PolicyAction, TransitionKey
 from .pipeline import ProcessorStep, ProcessorStepRegistry
 from flagos_robo.models.configs.types import PipelineFeatureType, PolicyFeature
 
-cur_platform = get_platform()
+def _cur_platform():
+    """Resolve the accelerator platform on demand, not at import time.
+
+    This used to be a module-level ``cur_platform = get_platform()``. That made
+    importing this module impossible on a machine with no accelerator, because
+    ``get_platform()`` raises RuntimeError when the registry is empty
+    (``platform_manager.py:89``) -- registration is gated on ``is_available()``.
+    The no-accelerator CI job could therefore not even collect the tests that
+    import this file.
+
+    The single use below is on the ``try_device.startswith("cuda")`` branch, so
+    a caller that asks for "cpu" or "mps" never reaches it. Deferring the
+    lookup keeps the RuntimeError where it belongs: at the point where someone
+    actually asks for an accelerator device.
+    """
+    return get_platform()
 
 
 def get_safe_torch_device(try_device: str) -> torch.device:
     """Given a string, return a torch.device with checks on whether the device is available."""
     try_device = str(try_device)
     if try_device.startswith("cuda"):
-        assert cur_platform.is_available()
+        assert _cur_platform().is_available()
         device = torch.device(try_device)
     elif try_device == "mps":
         assert torch.backends.mps.is_available()
