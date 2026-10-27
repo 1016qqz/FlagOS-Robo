@@ -14,5 +14,10 @@
 
 from .image_layout_processor import ImageLayoutProcessorStep
 from .image_resize_processor import ImageResizeProcessorStep
+from .numpy_to_tensor_processor import NumpyToTensorProcessorStep
 
-__all__ = ["ImageLayoutProcessorStep", "ImageResizeProcessorStep"]
+__all__ = [
+    "ImageLayoutProcessorStep",
+    "ImageResizeProcessorStep",
+    "NumpyToTensorProcessorStep",
+]

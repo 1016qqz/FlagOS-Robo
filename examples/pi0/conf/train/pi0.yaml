@@ -27,7 +27,8 @@ system:
     save_checkpoint: true
     # Number of steps between checkpoints
     save_freq: 1000
-  # TODO(yupu): Support resuming from checkpoint
+    # Path to a checkpoint directory to resume training from (e.g. outputs/pi0_train/checkpoints/000100)
+    # resume_from:
 
 model:
   model_name: pi0

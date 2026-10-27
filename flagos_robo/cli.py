@@ -14,15 +14,20 @@
 
 """``flagos-robo`` command line entry point.
 
-Provenance: a *train-only subset rewrite* of ``flagscale/cli.py`` (528 lines,
-FlagScale baseline f8e9a62c), not a verbatim copy.  Upstream exposes nine
-sub-commands (run / train / serve / inference / rl / compress / install /
-test / pull) plus an ``eval`` sub-app.  FlagOS-Robo keeps only ``run`` and
-``train`` because the serve and inference runners, the autotuner and the
-install/pull tooling are outside this repository's migration scope.
+Provenance: a *subset rewrite* of ``flagscale/cli.py`` (528 lines, FlagScale
+baseline f8e9a62c), not a verbatim copy.  Upstream exposes nine sub-commands
+(run / train / serve / inference / rl / compress / install / test / pull) plus
+an ``eval`` sub-app.  FlagOS-Robo keeps ``run``, ``train``, ``serve`` and
+``inference``; the RL and compress runners plus the install/pull/test/eval
+tooling are outside this repository's migration scope.
 
-The ``--tune`` flag is also dropped: ``auto_tune`` needs
-``flagscale.runner.autotuner_factory``, which was not migrated.
+The ``--tune`` flag is dropped: ``auto_tune`` needs
+``flagscale.runner.autotuner_factory``, which was not migrated.  Upstream's
+``serve`` also takes ``--port`` / ``--model-path`` / ``--engine-args``, which
+are forwarded as ``experiment.runner.cli_args`` overrides; FlagOS-Robo's
+serve runner does not read ``cli_args`` (the inference-engine argument
+plumbing was not migrated), so those flags are omitted rather than silently
+ignored.  Serve options belong in the config YAML.
 
 Helper shapes (``resolve_config``, ``_handle_config_error``, ``run_task``,
 ``get_action``) follow upstream so that behaviour -- including the
@@ -203,6 +208,40 @@ def train(
     action = get_action(stop, dryrun, test, query)
     cfg_path, cfg_name = resolve_config(model, config, "train")
     typer.echo(f"Train {model} [{action}]")
+    typer.echo(f"config_path: {cfg_path}")
+    typer.echo(f"config_name: {cfg_name}")
+    run_task(cfg_path, cfg_name, action)
+
+
+@app.command()
+def serve(
+    model: str = typer.Argument(..., help="Model name (e.g., pi0, pi0_5, gr00t_n1_5)"),
+    config: Optional[Path] = typer.Option(None, "--config", "-c", help="Config YAML path"),
+    stop: bool = typer.Option(False, "--stop", help="Stop serving"),
+    dryrun: bool = typer.Option(False, "--dryrun", help="Validate config only"),
+    test: bool = typer.Option(False, "--test", help="Test serving"),
+):
+    """Serve a policy over the websocket protocol."""
+    action = get_action(stop, dryrun, test, False)
+    cfg_path, cfg_name = resolve_config(model, config, "serve")
+    typer.echo(f"Serve {model} [{action}]")
+    typer.echo(f"config_path: {cfg_path}")
+    typer.echo(f"config_name: {cfg_name}")
+    run_task(cfg_path, cfg_name, action)
+
+
+@app.command()
+def inference(
+    model: str = typer.Argument(..., help="Model name (e.g., pi0, pi0_5)"),
+    config: Optional[Path] = typer.Option(None, "--config", "-c", help="Config YAML path"),
+    stop: bool = typer.Option(False, "--stop", help="Stop inference"),
+    dryrun: bool = typer.Option(False, "--dryrun", help="Validate config only"),
+    test: bool = typer.Option(False, "--test", help="Run with test"),
+):
+    """Run offline inference against a trained checkpoint."""
+    action = get_action(stop, dryrun, test, False)
+    cfg_path, cfg_name = resolve_config(model, config, "inference")
+    typer.echo(f"Inference {model} [{action}]")
     typer.echo(f"config_path: {cfg_path}")
     typer.echo(f"config_name: {cfg_name}")
     run_task(cfg_path, cfg_name, action)

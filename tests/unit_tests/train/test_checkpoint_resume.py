@@ -238,27 +238,30 @@ def test_save_persists_the_optimizer_state_resume_will_demand(entry_point):
         )
 
 
-def _load_replay_helper():
-    """Exec just ``replay_dataloader_to_step`` out of ``train_utils``.
+def _load_helper(name):
+    """Exec a single module-level function out of ``train_utils``.
 
     Importing the module would pull in torch, safetensors and the model
-    constants; the helper itself is pure control flow over two arguments, so
-    its source is lifted and exec'd in an empty namespace instead.
+    constants; these helpers are pure arithmetic or control flow over their
+    arguments, so the source is lifted and exec'd in an empty namespace.
     """
     tree = ast.parse(UTILS.read_text(encoding="utf-8"))
     fn = next(
         (
             node
             for node in tree.body
-            if isinstance(node, ast.FunctionDef)
-            and node.name == "replay_dataloader_to_step"
+            if isinstance(node, ast.FunctionDef) and node.name == name
         ),
         None,
     )
-    assert fn is not None, f"replay_dataloader_to_step not found in {UTILS}"
+    assert fn is not None, f"{name} not found in {UTILS}"
     namespace: dict = {}
     exec(compile(ast.Module(body=[fn], type_ignores=[]), str(UTILS), "exec"), namespace)
-    return namespace["replay_dataloader_to_step"]
+    return namespace[name]
+
+
+def _load_replay_helper():
+    return _load_helper("replay_dataloader_to_step")
 
 
 class _RecordingSampler:
@@ -313,3 +316,90 @@ def test_replay_is_a_noop_without_a_step_or_a_known_epoch_size():
     sampler = _RecordingSampler()
     assert replay(iter(range(10)), sampler, step=5, samples_per_epoch=0) == 0
     assert sampler.epochs == [], "samples_per_epoch=0 must not advance the epoch"
+
+
+def test_consumed_indices_counts_batches_inside_the_current_pass():
+    """The offset handed to ``state_dict`` is a *within-pass* index count.
+
+    The sampler can only skip indices of the pass it is about to serve, so a
+    step beyond one pass has to wrap rather than accumulate -- otherwise the
+    offset outgrows the index list and the restored pass comes back empty.
+    """
+    consumed = _load_helper("consumed_indices_for_step")
+
+    assert consumed(0, 10, 4) == 0, "a fresh run skips nothing"
+    assert consumed(3, 10, 4) == 12, "3 batches of 4 consumed in this pass"
+    assert consumed(10, 10, 4) == 0, "a full pass leaves the next one untouched"
+    assert consumed(13, 10, 4) == 12, "step 13 sits 3 batches into the second pass"
+
+
+def test_consumed_indices_lands_resume_on_a_pass_boundary():
+    """The modulo is what keeps the shortened pass aligned with the epoch grid.
+
+    Resuming at step 13 of a 10-batch pass serves 3 batches' worth of skipped
+    indices, so the restored pass is 7 batches long and the run arrives at
+    step 20 -- a real pass boundary -- rather than drifting 3 batches off it.
+    """
+    consumed = _load_helper("consumed_indices_for_step")
+
+    batches_per_pass, batch_size, step = 10, 4, 13
+    skipped_batches = consumed(step, batches_per_pass, batch_size) // batch_size
+    remaining = batches_per_pass - skipped_batches
+
+    assert step + remaining == 20, (
+        "the shortened pass must end on a multiple of batches_per_pass; got "
+        f"{step + remaining}"
+    )
+
+
+def test_consumed_indices_is_a_noop_for_a_degenerate_pass():
+    """``len(dataloader)`` is 0 for an empty dataset -- must not raise."""
+    consumed = _load_helper("consumed_indices_for_step")
+
+    assert consumed(5, 0, 4) == 0, "an empty pass cannot have consumed anything"
+    assert consumed(5, -1, 4) == 0, "a negative pass length must stay a no-op"
+
+
+def test_sampler_state_dict_refuses_to_count_its_own_yields():
+    """The consumed count is a *required* argument, by design.
+
+    A sampler that counts the indices it handed out counts the in-flight
+    prefetch too: ``num_workers * prefetch_factor`` batches are pulled from it
+    but never reach the training loop, so the saved offset overshoots and the
+    resumed run skips data it never trained on. Making the parameter required
+    means that bug cannot come back as a silent default.
+    """
+    source = UTILS.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+
+    cls = next(
+        (
+            node
+            for node in tree.body
+            if isinstance(node, ast.ClassDef)
+            and node.name == "StatefulDistributedSampler"
+        ),
+        None,
+    )
+    assert cls is not None, f"StatefulDistributedSampler not found in {UTILS}"
+
+    state_dict = next(
+        (
+            node
+            for node in cls.body
+            if isinstance(node, ast.FunctionDef) and node.name == "state_dict"
+        ),
+        None,
+    )
+    assert state_dict is not None, "StatefulDistributedSampler.state_dict is missing"
+
+    args = [a.arg for a in state_dict.args.args if a.arg != "self"]
+    assert args, (
+        "state_dict() must take the consumed-index count from the caller; a "
+        "zero-argument signature means the sampler is counting its own yields "
+        "and will include the prefetched-but-untrained batches"
+    )
+    assert not state_dict.args.defaults, (
+        f"{args} must stay required -- a default would let the self-counting "
+        "behavior return silently"
+    )

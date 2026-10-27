@@ -45,25 +45,67 @@ from flagos_robo.train.utils.random_utils import load_rng_state, save_rng_state
 
 
 class StatefulDistributedSampler(torch.utils.data.distributed.DistributedSampler):
-    """DistributedSampler with state_dict/load_state_dict for StatefulDataLoader."""
+    """DistributedSampler that can restart part-way into an epoch.
+
+    The resume offset is supplied by the caller rather than counted here, and
+    that is the whole point of the class. Counting indices as ``__iter__``
+    hands them out -- the obvious implementation -- is wrong under a
+    multi-worker DataLoader: ``_MultiProcessingDataLoaderIter`` pre-fetches
+    ``num_workers * prefetch_factor`` batches when it is built and keeps the
+    pipeline full afterwards. Those indices have left the sampler but have not
+    reached the training loop, so a checkpoint would record an offset running
+    ahead of real progress by ``num_workers * prefetch_factor * batch_size``
+    indices, and the resumed run would silently skip that many batches -- no
+    error, just a different data order than the uninterrupted run.
+    (``torchdata``'s StatefulDataLoader rolls in-flight prefetch back for you;
+    it is not installed in this environment.)
+
+    So ``state_dict`` takes the number of indices this rank has actually
+    consumed. Callers derive it from the training loop's ``step`` via
+    :func:`consumed_indices_for_step`: ``step`` only advances after a batch has
+    been used, which makes it immune to prefetch.
+    """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._yielded = 0
+        self._offset = 0
 
     def __iter__(self):
+        # Take the offset on the way in and clear it immediately, rather than
+        # resetting after the yield loop: cycle() abandons the exhausted
+        # generator instead of running it to completion, so a trailing reset
+        # would never execute and the offset would be re-applied to every
+        # later pass.
+        offset, self._offset = self._offset, 0
         full_indices = list(super().__iter__())
-        for idx in full_indices[self._yielded :]:
-            self._yielded += 1
-            yield idx
-        self._yielded = 0
+        yield from full_indices[offset:]
 
-    def state_dict(self):
-        return {"epoch": self.epoch, "yielded": self._yielded}
+    def state_dict(self, consumed_indices: int):
+        """Snapshot the sampler. ``consumed_indices`` is required, see class doc."""
+        return {"epoch": self.epoch, "yielded": consumed_indices}
 
     def load_state_dict(self, state_dict):
         self.set_epoch(state_dict["epoch"])
-        self._yielded = state_dict["yielded"]
+        self._offset = state_dict["yielded"]
+
+
+def consumed_indices_for_step(step: int, batches_per_pass: int, batch_size: int) -> int:
+    """How many indices this rank has consumed inside the current dataloader pass.
+
+    ``batches_per_pass`` is ``len(dataloader)`` -- the batch count of one full
+    pass, which ``DistributedSampler.__len__`` keeps constant regardless of any
+    resume offset. Note this is *not* ``samples_per_epoch`` as the training
+    loops compute it (``num_frames // (batch_size * world_size)``, a step
+    count): the per-pass batch count is ``ceil(num_samples / batch_size)`` on
+    this rank alone.
+
+    The modulo self-corrects across a resume. With 10 batches per pass and a
+    resume at step 13, the offset is 3 batches, the shortened pass yields 7
+    batches, and ``13 + 7 == 20`` lands exactly on the next pass boundary.
+    """
+    if batches_per_pass <= 0:
+        return 0
+    return (step % batches_per_pass) * batch_size
 
 
 def get_step_identifier(step: int, total_steps: int) -> str:
@@ -160,6 +202,10 @@ def save_training_state(
     save_dir = checkpoint_dir / TRAINING_STATE_DIR
     save_dir.mkdir(parents=True, exist_ok=True)
     save_training_step(train_step, save_dir)
+    # Saves this rank's RNG file. Callers that run save_checkpoint under an
+    # `if is_main_process` guard must additionally call save_rng_state() on the
+    # other ranks (see save_rng_state_only), or those ranks resume from
+    # rank 0's stream.
     save_rng_state(save_dir)
     if optimizer_state_dict is not None:
         save_optimizer_state(optimizer_state_dict, save_dir)
@@ -167,6 +213,20 @@ def save_training_state(
         save_scheduler_state(scheduler, save_dir)
     if dataloader_state is not None:
         save_dataloader_state(dataloader_state, save_dir)
+
+
+def save_rng_state_only(checkpoint_dir: Path) -> None:
+    """Write just this rank's RNG file into a checkpoint's training_state dir.
+
+    Exists for the non-main ranks. ``save_checkpoint`` writes model/optimizer
+    state through FSDP2 collectives and is therefore called on rank 0 only, but
+    RNG state is per-rank and cannot be gathered that way — so every other rank
+    calls this to deposit its own file alongside. Safe to call concurrently:
+    the directory is created with ``exist_ok`` and each rank writes a distinct
+    filename.
+    """
+    save_dir = checkpoint_dir / TRAINING_STATE_DIR
+    save_rng_state(save_dir)
 
 
 def load_model_state_fsdp2(model: nn.Module, pretrained_dir: Path) -> None:

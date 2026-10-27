@@ -193,11 +193,6 @@ flagos-robo train gr00t_n1_5 --stop
 
 ## Serving
 
-> **Not available yet.** The serving runner has not been migrated to
-> FlagOS-Robo, so `flagos-robo serve` does not exist in this repository
-> (`flagos_robo/serve/` is still a package stub). The configuration reference
-> below is kept for the upcoming port -- only the commands cannot be run yet.
-
 ### Edit Config
 
 ```sh
@@ -223,7 +218,7 @@ flagos-robo serve gr00t_n1_5 --config ./examples/gr00t_n1_5/conf/serve.yaml
 flagos-robo serve gr00t_n1_5 -c ./examples/gr00t_n1_5/conf/serve.yaml
 ```
 
-Serving logs are saved to `outputs/gr00t_n1_5_serve/logs/host_0_localhost.output` by default.
+Serving logs are saved to `outputs/gr00t_n1_5_serve/serve_logs/host_0_localhost.output` by default.
 
 ### Stop Serving
 

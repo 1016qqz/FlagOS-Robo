@@ -49,10 +49,13 @@ from flagos_robo.train.utils.logging_utils import (
     format_big_number,
 )
 from flagos_robo.train.utils.train_utils import (
+    StatefulDistributedSampler,
+    consumed_indices_for_step,
     get_step_checkpoint_dir,
     load_training_state_fsdp2,
     replay_dataloader_to_step,
     save_checkpoint,
+    save_rng_state_only,
     update_last_checkpoint,
 )
 from flagos_robo.train.utils.random_utils import serialize_rng_state, deserialize_rng_state
@@ -496,8 +499,11 @@ def main(config: TrainConfig, seed: int):
     num_workers = config.system.num_workers
     shuffle = config.system.shuffle
 
-    # DistributedSampler ensures each rank gets different data
-    sampler = torch.utils.data.distributed.DistributedSampler(
+    # DistributedSampler ensures each rank gets different data. The Stateful
+    # subclass additionally tracks how many samples this rank has yielded, so a
+    # resume can jump straight to that offset (see the resume block below)
+    # instead of replaying the dataloader step by step.
+    sampler = StatefulDistributedSampler(
         dataset,
         num_replicas=world_size,
         rank=rank,
@@ -573,16 +579,25 @@ def main(config: TrainConfig, seed: int):
     step = 0
     resume_from = config.system.checkpoint.resume_from
     if resume_from:
-        step, _dl_state = load_training_state_fsdp2(
+        step, dl_state = load_training_state_fsdp2(
             Path(resume_from), policy, optimizer, lr_scheduler,
         )
-        # Two independent pieces of hidden state have to be handled here: the
-        # global RNG that replaying consumes (snapshotted and restored), and
-        # the sampler's own epoch-seeded generator, which an RNG snapshot
-        # cannot reach. See replay_dataloader_to_step.
-        saved_rng = serialize_rng_state()
-        epoch = replay_dataloader_to_step(dl_iter, sampler, step, samples_per_epoch)
-        deserialize_rng_state(saved_rng)
+        if dl_state is not None and hasattr(sampler, "load_state_dict"):
+            # Preferred path: the sampler recorded how far into the epoch it
+            # had got, so restoring is a single offset assignment -- the cost
+            # does not grow with `step`. Nothing is drawn from the dataloader
+            # here, so the global RNG is left untouched and needs no snapshot.
+            sampler.load_state_dict(dl_state)
+            epoch = dl_state.get("epoch", 0)
+        else:
+            # Fallback for checkpoints written before the sampler carried
+            # state. Replaying consumes both the global RNG and the sampler's
+            # own epoch-seeded generator; the former is snapshotted around the
+            # replay, the latter an RNG snapshot cannot reach at all.
+            # See replay_dataloader_to_step.
+            saved_rng = serialize_rng_state()
+            epoch = replay_dataloader_to_step(dl_iter, sampler, step, samples_per_epoch)
+            deserialize_rng_state(saved_rng)
         logger.info(f"Resumed from checkpoint at step {step} (epoch {epoch})")
 
     dist.barrier()
@@ -693,12 +708,15 @@ def main(config: TrainConfig, seed: int):
             state_dict = get_model_state_dict(policy, options=options)
             optimizer_state_dict = get_optimizer_state_dict(policy, optimizer, options=options)
 
+            # Computed on every rank, not just the main one: the non-main ranks
+            # need the same directory to deposit their own RNG files below.
+            output_dir = Path(config.system.checkpoint.output_directory)
+            checkpoint_dir = get_step_checkpoint_dir(
+                output_dir, config.system.train_steps, step
+            )
+
             if is_main_process:
                 logger.info(f"Saving checkpoint at step {step}")
-                output_dir = Path(config.system.checkpoint.output_directory)
-                checkpoint_dir = get_step_checkpoint_dir(
-                    output_dir, config.system.train_steps, step
-                )
                 save_checkpoint(
                     checkpoint_dir=checkpoint_dir,
                     step=step,
@@ -709,8 +727,26 @@ def main(config: TrainConfig, seed: int):
                     preprocessor=preprocessor,
                     postprocessor=postprocessor,
                     state_dict=state_dict,
+                    # The offset is derived from `step`, not read back out of
+                    # the sampler: the sampler's own index count runs ahead of
+                    # the training loop by the DataLoader's prefetch depth
+                    # (num_workers * prefetch_factor batches), which would make
+                    # the resumed run skip that many batches. See
+                    # StatefulDistributedSampler's docstring.
+                    dataloader_state=sampler.state_dict(
+                        consumed_indices_for_step(
+                            step, len(dataloader), config.system.batch_size
+                        )
+                    )
+                    if hasattr(sampler, "state_dict")
+                    else None,
                 )
                 update_last_checkpoint(checkpoint_dir)
+            else:
+                # RNG state is per-rank and cannot travel through the FSDP2
+                # collectives that make save_checkpoint rank-0-only, so each
+                # other rank writes its own file into the same directory.
+                save_rng_state_only(checkpoint_dir)
 
             dist.barrier()
 

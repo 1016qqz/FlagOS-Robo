@@ -24,10 +24,36 @@ from omegaconf import DictConfig, ListConfig, OmegaConf
 
 import flagos_robo.serve.processor  # noqa: F401 — registers serve-specific processor steps
 from flagos_robo.logger import logger
-from flagos_robo.models.utils.constants import ACTION, OBS_IMAGES, OBS_STATE
-from flagos_robo.models.vla import TrainablePolicy
+from flagos_robo.platforms import get_platform  # noqa: F401 must be before model imports
+
+# TrainablePolicy / PreTrainedConfig dispatch is registry-based: a type is only
+# resolvable after its module has been imported, because registration happens in
+# ``__init_subclass__``. flagos_robo/models/vla/__init__.py deliberately does NOT
+# import pi0/pi05 (pi0.modeling_pi0 imports back into vla, so re-exporting them from
+# there is circular -- see the note in that file), which means every entrypoint has to
+# register them itself. train_pi.py and inference_pi.py already import the concrete
+# classes; this entrypoint only ever touches the base class, so it needs the two
+# side-effect imports below. Without them, serving a pi0 checkpoint dies in
+# PreTrainedConfig.from_pretrained with:
+#   ValueError: Unknown config type 'pi0'. Known types: ['Gr00tN15']
+import flagos_robo.models.pi0  # noqa: E402,F401 — registers PI0Config / PI0Policy
+import flagos_robo.models.pi05  # noqa: E402,F401 — registers PI05Config / PI05Policy
+
+# Same registry story one level down, for processor steps rather than policies: the
+# GR00T-specific steps (groot_pack_inputs / groot_eagle_encode / groot_eagle_collate /
+# groot_action_unpack_unnormalize) are registered by the @ProcessorStepRegistry.register
+# decorators in models/vla/gr00t_n1_5/processor_gr00t.py, and that module is not reached
+# via vla/gr00t_n1_5/__init__.py (which only re-exports configuration_/modeling_).
+# train_gr00t_n1_5.py carries this same side-effect import; without it here, serving a
+# GR00T checkpoint dies in PolicyProcessorPipeline.from_pretrained with:
+#   KeyError: "Processor step 'groot_pack_inputs' not found in registry"
+import flagos_robo.models.vla.gr00t_n1_5.processor_gr00t  # noqa: E402,F401
+from flagos_robo.models.utils.constants import ACTION, OBS_IMAGES, OBS_STATE  # noqa: E402
+from flagos_robo.models.vla import TrainablePolicy  # noqa: E402
+from flagos_robo.models.vla.pretrained_config import PreTrainedConfig  # noqa: E402
 from flagos_robo.serve.processor.image_layout_processor import ImageLayoutProcessorStep
 from flagos_robo.serve.processor.image_resize_processor import ImageResizeProcessorStep
+from flagos_robo.serve.processor.numpy_to_tensor_processor import NumpyToTensorProcessorStep
 from flagos_robo.serve.websocket_policy_server import WebsocketPolicyServer
 from flagos_robo.train.processor import PolicyProcessorPipeline, ProcessorStepRegistry
 from flagos_robo.train.processor.pipeline import get_device_override
@@ -39,6 +65,8 @@ TASK_KEY = "task"
 def _default_serve_preprocessor(model_variant: str) -> PolicyProcessorPipeline | None:
     """Return the default serve preprocessor for a given model variant, or None if not needed."""
     variant = model_variant.lower()
+    if variant == "pi0":
+        return _default_pi0_serve_preprocessor()
     if variant == "pi0.5":
         return _default_pi05_serve_preprocessor()
     if variant == "qwengr00t":
@@ -46,22 +74,39 @@ def _default_serve_preprocessor(model_variant: str) -> PolicyProcessorPipeline |
     return None
 
 
-def _default_pi05_serve_preprocessor() -> PolicyProcessorPipeline:
-    """Default serve preprocessor for pi0.5.
+def _pi_serve_steps() -> list:
+    """Serve preprocessor steps shared by pi0 and pi0.5.
 
-    pi0.5's ``_preprocess_images`` expects images as [B, C, H, W] float32 [0, 1].
-    Client observations arrive as HWC uint8 numpy arrays, so this pipeline converts them.
+    ``_preprocess_images`` in both models expects images as [B, C, H, W] float32 [0, 1]
+    ``torch.Tensor`` (it reads ``img.device``), and the policy preprocessor steps that
+    follow gate on ``isinstance(x, torch.Tensor)``. Client observations arrive as HWC
+    uint8 numpy arrays, so the layout step converts them and the tensor step moves the
+    whole observation (images AND state) onto torch.
+
+    Order matters: ``ImageLayoutProcessorStep`` gates on ``isinstance(img, np.ndarray)``,
+    so it has to run BEFORE the numpy->tensor conversion or it would skip every image.
+    Neither model needs an explicit resize step -- ``resize_with_pad_torch`` inside
+    ``_preprocess_images`` handles the target resolution.
     """
-    return PolicyProcessorPipeline(
-        steps=[
-            ImageLayoutProcessorStep(
-                src_layout="hwc",
-                dst_layout="chw",
-                add_batch_dim=True,
-                to_float=True,
-            )
-        ]
-    )
+    return [
+        ImageLayoutProcessorStep(
+            src_layout="hwc",
+            dst_layout="chw",
+            add_batch_dim=True,
+            to_float=True,
+        ),
+        NumpyToTensorProcessorStep(dtype="float32"),
+    ]
+
+
+def _default_pi0_serve_preprocessor() -> PolicyProcessorPipeline:
+    """Default serve preprocessor for pi0."""
+    return PolicyProcessorPipeline(steps=_pi_serve_steps())
+
+
+def _default_pi05_serve_preprocessor() -> PolicyProcessorPipeline:
+    """Default serve preprocessor for pi0.5."""
+    return PolicyProcessorPipeline(steps=_pi_serve_steps())
 
 
 def _default_qwen_gr00t_serve_preprocessor() -> PolicyProcessorPipeline:
@@ -152,7 +197,19 @@ class Policy:
         t_s = time.perf_counter()
         pretrained_dir: str = self.config_engine.model
         runtime_device = getattr(self.config_engine, "device", None) or "cpu"
-        self.model = TrainablePolicy.from_pretrained(pretrained_dir, device=runtime_device)
+        # ``device=`` alone is NOT enough: PI0Policy/PI05Policy.from_pretrained have no
+        # ``device`` parameter, so base_policy.py's device argument lands in **kwargs and is
+        # silently dropped. What actually moves the weights is ``model.to(config.device)``
+        # inside the policy's own loader -- i.e. the *checkpoint's* device field wins.
+        # pi05_libero_base ships ``"device": "mps"``, which on a CUDA box raises
+        # "PyTorch is not linked with support for mps devices" (wrapped as "Could not load
+        # PI05 pretrained weights"). So load the config first and let the runtime device
+        # override whatever the checkpoint recorded -- same two-step inference_pi.py:82-83 does.
+        config = PreTrainedConfig.from_pretrained(pretrained_dir)
+        config.device = runtime_device
+        self.model = TrainablePolicy.from_pretrained(
+            pretrained_dir, device=runtime_device, config=config
+        )
         self._load_processors(pretrained_dir)
         # TODO: (yupu): model.to(dtype)?
         logger.info(f"Policy model loading latency: {time.perf_counter() - t_s:.2f}s")
@@ -162,10 +219,20 @@ class Policy:
         self.rename_map = self.config_engine.get("rename_map")
 
         runtime_device = getattr(self.config_engine, "device", None) or "cpu"
+        overrides = dict(get_device_override(runtime_device))
+        # The checkpoint's policy_preprocessor.json stores ``tokenizer_name`` as a HF
+        # Hub repo id (e.g. "google/paligemma-3b-pt-224"), which is a gated repo: loading
+        # it would hit the Hub and fail with 401 in an offline/token-less environment.
+        # The serve config carries a local tokenizer directory, so redirect the step to
+        # it -- same override inference_pi.py:150 applies. Without this the
+        # ``engine_args.tokenizer`` field is silently dead config.
+        tokenizer_path = self.config_engine.get("tokenizer")
+        if tokenizer_path:
+            overrides["tokenizer_processor"] = {"tokenizer_name": str(tokenizer_path)}
         self.preprocessor = PolicyProcessorPipeline.from_pretrained(
             pretrained_dir,
             config_filename="policy_preprocessor.json",
-            overrides=get_device_override(runtime_device),
+            overrides=overrides,
         )
         self.postprocessor = PolicyProcessorPipeline.from_pretrained(
             pretrained_dir,
@@ -203,6 +270,7 @@ class Policy:
             Dict with ``action`` key containing a numpy array of shape
             ``[B, T, action_dim]``.
         """
+        t_req = time.perf_counter()
         logger.info("Start to inference")
         logger.info(f"Raw batch keys: {list(batch.keys())}")
 
@@ -238,8 +306,10 @@ class Policy:
         #     if hasattr(v, "shape"):
         #         logger.info(f"  {k}: shape={v.shape} dtype={v.dtype}")
 
+        t_infer = time.perf_counter()
         with torch.no_grad():
             action = self.model.predict_action(batch)
+        predict_s = time.perf_counter() - t_infer
 
         logger.info(f"Raw action keys: {list(action.keys())}")
         debug_print(action)
@@ -254,6 +324,20 @@ class Policy:
         # TODO: (yupu): rename_map for output key
         action["actions"] = action[ACTION]
         logger.info(f"Final action shape: {action[ACTION].shape}, first_step={action[ACTION][0]}")
+
+        # Per-request serve metric. The repo convention for a robo serve entrypoint is a
+        # one-line latency record per request (see FlagScale
+        # flagscale/serve/run_serve_robobrain_x0.5_libero.py:102 "Infer latency"); the VLA
+        # entrypoint only timed model loading. ``predict_s`` isolates the policy forward,
+        # ``total_s`` covers pre/post-processing too, so a slow round can be attributed
+        # without a profiler. serve/metric/serve_metric.py is deliberately NOT used here:
+        # calculate_metrics() computes LLM batch-benchmark stats (ttft/tpot/itl over a
+        # request list) and does not describe a single VLA action-chunk request.
+        total_s = time.perf_counter() - t_req
+        logger.info(
+            f"Infer latency: total={total_s:.3f}s predict={predict_s:.3f}s "
+            f"action_shape={tuple(action[ACTION].shape)}"
+        )
 
         return action
 

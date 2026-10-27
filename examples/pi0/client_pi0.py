@@ -12,100 +12,128 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""WebSocket client for a FlagOS-Robo policy server.
+
+``flagos-robo serve <model>`` starts :class:`WebsocketPolicyServer`
+(``flagos_robo/serve/websocket_policy_server.py``), so this client speaks that
+server's protocol:
+
+1. connect; the server sends a msgpack **metadata** frame first.  It must be
+   read before anything is sent, otherwise the first ``recv()`` would consume
+   the metadata and it would be mistaken for the action.
+2. the client sends one msgpack-encoded observation dict.
+3. the server replies with a msgpack action dict carrying ``server_timing``.
+
+Encoding uses the in-repo :mod:`flagos_robo.serve.msgpack_numpy` codec -- the
+same one the server uses.  Plain msgpack cannot round-trip ``ndarray``; the
+repo codec packs arrays as ``{__ndarray__, data, dtype, shape}``.
+
+Images are sent as raw HWC ``uint8`` arrays (not base64): the server's
+``validate_batch`` expects arrays, and the policy preprocessor does the real
+resize/normalization.
+"""
+
 import argparse
-import base64
+import asyncio
 import json
 import sys
-import time
 from pathlib import Path
-from typing import Any
 
 import numpy as np
-import requests
 import torch
+from PIL import Image
+
+from flagos_robo.serve import msgpack_numpy
 
 
-def encode_image(path: str) -> str:
-    """Read image as base64 string."""
-    path = Path(path)
-    if not path.exists():
-        raise FileNotFoundError(f"Image not found: {path.resolve()}")
-    return base64.b64encode(path.read_bytes()).decode("utf-8")
+def load_image(path: str) -> np.ndarray:
+    """Read an image file into an HWC uint8 array (the server's expected form)."""
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"Image not found: {p.resolve()}")
+    arr = np.asarray(Image.open(p).convert("RGB"), dtype=np.uint8)
+    if arr.ndim != 3:
+        raise ValueError(f"Expected an HWC image, got shape {arr.shape} from {p}")
+    return np.ascontiguousarray(arr)
 
 
-def check_health(base_url: str) -> None:
-    """Ping /health; raise RuntimeError if unhealthy."""
-    try:
-        r = requests.get(f"{base_url}/health", timeout=5)
-        r.raise_for_status()
-    except Exception as e:
-        raise RuntimeError(f"Health-check request failed: {e}") from e
-
-    data = r.json()
-    if not (data.get("status") == "healthy" and data.get("model_loaded")):
-        raise RuntimeError(f"Server not ready: {json.dumps(data, indent=2)}")
-    print(f"[√] Server healthy - GPU: {data['gpu_info']['device_name']}")
-
-
-def load_state_from_file(state_path: str) -> np.ndarray:
-    """Load state tensor from file and convert to numpy array.
-
-    Args:
-        state_path: Path to state file (.pt file)
-
-    Returns:
-        State array with shape (1, state_dim)
-    """
+def load_state(state_path: str) -> np.ndarray:
+    """Load a state tensor file (.pt) and return it with shape (1, state_dim)."""
     state = torch.load(state_path, map_location="cpu")
     if isinstance(state, torch.Tensor):
         state = state.numpy()
-    # Ensure shape is (1, state_dim)
+    state = np.asarray(state)
     if state.ndim == 1:
         state = state[np.newaxis, :]
     return state
 
 
-def build_payload(args) -> dict[str, Any]:
-    """Construct JSON payload for /infer.
+def build_obs(args) -> dict:
+    """Build the observation dict.
 
-    The client must send images with keys matching the config's images_keys.
-    Default keys are:
-    - observation.images.base_0_rgb
-    - observation.images.left_wrist_0_rgb
-    - observation.images.right_wrist_0_rgb
+    Image keys must match ``engine_args.images_keys`` in the serve config.  The
+    pi0 defaults are ``observation.images.{base_0_rgb,left_wrist_0_rgb,
+    right_wrist_0_rgb}``; override with ``--image-keys`` for other layouts.
     """
-    # Encode images with keys matching config images_keys
-    img_sample = {
-        "observation.images.base_0_rgb": encode_image(args.img1),
-        "observation.images.left_wrist_0_rgb": encode_image(args.img2),
-        "observation.images.right_wrist_0_rgb": encode_image(args.img3),
+    keys = [k.strip() for k in args.image_keys.split(",") if k.strip()]
+    paths = [p for p in (args.img1, args.img2, args.img3) if p]
+    if len(keys) != len(paths):
+        raise ValueError(
+            f"Got {len(paths)} image path(s) but {len(keys)} image key(s): {keys}. "
+            "Pass --image-keys matching the images you provide."
+        )
+    obs = {
+        "task": args.instruction,
+        "observation.state": load_state(args.state_path),
     }
-    # Load state from file
-    state = load_state_from_file(args.state_path)
-    state = state.tolist()
-
-    return {"instruction": args.instruction, "state": state, "images": [img_sample]}
+    for key, path in zip(keys, paths):
+        obs[key] = load_image(path)
+    return obs
 
 
-def pretty_print_resp(resp: requests.Response) -> None:
-    """Nicely print JSON or raw content."""
-    try:
-        print(json.dumps(resp.json(), indent=2, ensure_ascii=False))
-    except ValueError:
-        print(resp.text)
+async def infer_once(args) -> int:
+    import websockets.asyncio.client as ws_client
+
+    obs = build_obs(args)
+    for key, value in sorted(obs.items()):
+        if isinstance(value, np.ndarray):
+            print(f"  obs {key:<44} shape={value.shape} dtype={value.dtype}")
+        else:
+            print(f"  obs {key:<44} {value!r}")
+
+    uri = f"ws://{args.host}:{args.port}"
+    print(f"-> Connecting to {uri}")
+    async with ws_client.connect(
+        uri, compression=None, max_size=None, open_timeout=args.timeout, ping_interval=None
+    ) as websocket:
+        metadata = msgpack_numpy.unpackb(await asyncio.wait_for(websocket.recv(), args.timeout))
+        print(f"[v] Connected. Server metadata: {json.dumps(metadata, default=str)}")
+
+        await websocket.send(msgpack_numpy.Packer().pack(obs))
+        raw = await asyncio.wait_for(websocket.recv(), args.infer_timeout)
+
+    if isinstance(raw, str):  # the server forwards its traceback as a text frame
+        print("[Error] Server returned an error frame:")
+        print(raw)
+        return 1
+
+    response = msgpack_numpy.unpackb(raw)
+    action = np.asarray(response["action"])
+    print(f"[v] Action shape={action.shape} dtype={action.dtype}")
+    print(f"    first step: {np.round(action.reshape(-1, action.shape[-1])[0], 6).tolist()}")
+    timing = response.get("server_timing")
+    if timing:
+        print(f"    server_timing: {json.dumps({k: float(v) for k, v in timing.items()})}")
+    return 0
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Client for RoboBrain-Robotics inference API")
-    parser.add_argument(
-        "--host", default="127.0.0.1", help="Host of local SSH tunnel (default: 127.0.0.1)"
-    )
-    parser.add_argument(
-        "--port", type=int, default=5000, help="Port of local SSH tunnel (default: 15000)"
-    )
+def main() -> int:
+    parser = argparse.ArgumentParser(description="WebSocket client for a FlagOS-Robo policy server")
+    parser.add_argument("--host", default="127.0.0.1", help="Server host (default: 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=5000, help="Server port (default: 5000)")
     parser.add_argument("--img1", required=True, help="Path to first camera RGB image")
-    parser.add_argument("--img2", required=True, help="Path to second camera RGB image")
-    parser.add_argument("--img3", required=True, help="Path to third camera RGB image")
+    parser.add_argument("--img2", help="Path to second camera RGB image")
+    parser.add_argument("--img3", help="Path to third camera RGB image")
     parser.add_argument(
         "--state-path",
         required=True,
@@ -116,28 +144,25 @@ def main():
         default="Grab the orange and put it into the basket.",
         help="Task instruction for the robot",
     )
+    parser.add_argument(
+        "--image-keys",
+        default=(
+            "observation.images.base_0_rgb,"
+            "observation.images.left_wrist_0_rgb,"
+            "observation.images.right_wrist_0_rgb"
+        ),
+        help="Comma-separated observation image keys, matching engine_args.images_keys",
+    )
+    parser.add_argument("--timeout", type=float, default=30.0, help="Connect/metadata timeout (s)")
+    parser.add_argument("--infer-timeout", type=float, default=300.0, help="Inference timeout (s)")
     args = parser.parse_args()
 
-    base_url = f"http://{args.host}:{args.port}"
-    print(f"-> Using endpoint: {base_url}")
-
-    payload = build_payload(args)
     try:
-        t0 = time.time()
-        resp = requests.post(
-            f"{base_url}/infer",
-            headers={"Content-Type": "application/json"},
-            data=json.dumps(payload),
-            timeout=300,
-        )
-        elapsed = (time.time() - t0) * 1000
-        resp.raise_for_status()
-    except requests.RequestException as e:
-        print(f"[Error] HTTP request failed: {e}")
-        sys.exit(1)
-    print(f"[√] Response OK ({resp.status_code})  -  {elapsed:.1f}ms")
-    pretty_print_resp(resp)
+        return asyncio.run(infer_once(args))
+    except Exception as exc:  # noqa: BLE001 - a client should report, not traceback
+        print(f"[Error] {type(exc).__name__}: {exc}")
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

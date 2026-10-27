@@ -202,12 +202,6 @@ flagos-robo train pi0 --stop
 
 ## Inference
 
-> **Not available yet.** The inference runner has not been migrated to
-> FlagOS-Robo, so `flagos-robo inference` does not exist in this repository
-> (`flagos_robo/inference/` is still a package stub). The configuration and the
-> input-preparation steps below are kept because they are already correct for
-> the upcoming port -- only the final command cannot be run yet.
-
 ### Prepare Inference Inputs
 
 You can extract inference inputs (images, state, task) from a dataset using the provided script:
@@ -293,11 +287,6 @@ The predicted action tensor is printed to the console and saved in the log file.
 
 ## Serving
 
-> **Not available yet.** The serving runner has not been migrated to
-> FlagOS-Robo, so `flagos-robo serve` does not exist in this repository
-> (`flagos_robo/serve/` is still a package stub). The configuration reference
-> below is kept for the upcoming port -- only the commands cannot be run yet.
-
 ### Edit Config
 
 ```sh
@@ -333,7 +322,7 @@ flagos-robo serve pi0 --config ./examples/pi0/conf/serve.yaml
 flagos-robo serve pi0 -c ./examples/pi0/conf/serve.yaml
 ```
 
-Serving logs are saved to `outputs/pi0_serve/logs/host_0_localhost.output` by default.
+Serving logs are saved to `outputs/pi0_serve/serve_logs/host_0_localhost.output` by default.
 
 ### Stop Serving
 

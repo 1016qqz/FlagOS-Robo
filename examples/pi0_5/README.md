@@ -51,7 +51,7 @@ Download models and tokenizers using the provided script. Choose either HuggingF
 ```sh
 cd FlagOS-Robo/
 python examples/pi0/download.py \
-    --repo_id lerobot/pi05_base \
+    --repo_id lerobot/pi05_libero_base \
     --output_dir /workspace/models \
     --source huggingface
 
@@ -66,7 +66,7 @@ python examples/pi0/download.py \
 ```sh
 cd FlagOS-Robo/
 python examples/pi0/download.py \
-    --repo_id lerobot/pi05_base \
+    --repo_id lerobot/pi05_libero_base \
     --output_dir /workspace/models \
     --source modelscope
 
@@ -77,7 +77,7 @@ python examples/pi0/download.py \
 ```
 
 The models will be downloaded to (example with `/workspace/models`):
-- `/workspace/models/lerobot/pi05_base`
+- `/workspace/models/lerobot/pi05_libero_base`
 - `/workspace/models/google/paligemma-3b-pt-224`
 
 ## Training
@@ -86,14 +86,14 @@ The models will be downloaded to (example with `/workspace/models`):
 
 FlagOS-Robo uses the **LeRobotDataset v3.0** format. For detailed information about the format structure, see the [LeRobotDataset v3.0 documentation](https://huggingface.co/docs/lerobot/en/lerobot-dataset-v3).
 
-For example, to download the `aloha_mobile_cabinet` dataset:
+For example, to download the `libero_goal_image` dataset (the one `pi05_libero_base` was trained on):
 
 **Using HuggingFace Hub:**
 
 ```sh
 cd FlagOS-Robo/
 python examples/pi0/download.py \
-    --repo_id lerobot/aloha_mobile_cabinet \
+    --repo_id lerobot/libero_goal_image \
     --output_dir /workspace/datasets \
     --repo_type dataset \
     --source huggingface
@@ -104,14 +104,14 @@ python examples/pi0/download.py \
 ```sh
 cd FlagOS-Robo/
 python examples/pi0/download.py \
-    --repo_id lerobot/aloha_mobile_cabinet \
+    --repo_id lerobot/libero_goal_image \
     --output_dir /workspace/datasets \
     --repo_type dataset \
     --source modelscope
 ```
 
 The dataset will be downloaded to (example with `/workspace/datasets`):
-- `/workspace/datasets/lerobot/aloha_mobile_cabinet`
+- `/workspace/datasets/lerobot/libero_goal_image`
 
 **Note**: PI0.5 supports two normalization methods:
 - **Quantile normalization** (default when `use_quantiles: true`): Requires quantile statistics in the dataset
@@ -164,7 +164,7 @@ Configure the following fields:
 
 **Model settings**:
 - `model.model_name` - Model name: `"pi0.5"`
-- `model.checkpoint_dir` - Path to pretrained model (e.g., `/workspace/models/lerobot/pi05_base`)
+- `model.checkpoint_dir` - Path to pretrained model (e.g., `/workspace/models/lerobot/pi05_libero_base`)
 - `model.tokenizer_path` - Path to tokenizer (e.g., `/workspace/models/google/paligemma-3b-pt-224`)
 - `model.tokenizer_max_length` - Maximum tokenizer sequence length (default: `200` for pi0.5)
 - `model.action_steps` - Number of action steps to predict
@@ -178,14 +178,12 @@ Configure the following fields:
 - `model.optimizer.scheduler.decay_lr` - Final learning rate after decay (for example: `2.5e-6`)
 
 **Data settings**:
-- `data.data_path` - Path to LeRobot dataset root (e.g., `/workspace/datasets/lerobot/aloha_mobile_cabinet`)
+- `data.data_path` - Path to LeRobot dataset root (e.g., `/workspace/datasets/IPEC-COMMUNITY/libero_goal_no_noops_1.0.0_lerobot`)
 - `data.use_imagenet_stats` - Whether to use ImageNet normalization stats (default: `true`)
 - `data.rename_map` - Dictionary mapping dataset keys to policy keys (optional). Check the `features` key in your dataset's `meta/info.json` file to determine the correct mapping:
   ```yaml
   rename_map:
-    observation.images.cam_high: observation.images.base_0_rgb
-    observation.images.cam_left_wrist: observation.images.left_wrist_0_rgb
-    observation.images.cam_right_wrist: observation.images.right_wrist_0_rgb
+    observation.images.wrist_image: observation.images.image2
   ```
 - `data.use_quantiles` - Whether to use quantile normalization (default: `false` for pi0.5, uses MEAN_STD normalization)
 
@@ -209,12 +207,6 @@ flagos-robo train pi0_5 --stop
 
 ## Inference
 
-> **Not available yet.** The inference runner has not been migrated to
-> FlagOS-Robo, so `flagos-robo inference` does not exist in this repository
-> (`flagos_robo/inference/` is still a package stub). The configuration and the
-> input-preparation steps below are kept because they are already correct for
-> the upcoming port -- only the final command cannot be run yet.
-
 ### Prepare Inference Inputs
 
 You can extract inference inputs (images, state, task) from a dataset using the provided script:
@@ -222,13 +214,13 @@ You can extract inference inputs (images, state, task) from a dataset using the 
 ```sh
 cd FlagOS-Robo/
 python examples/pi0/dump_dataset_inputs.py \
-    --dataset_root /workspace/datasets/lerobot/aloha_mobile_cabinet \
+    --dataset_root /workspace/datasets/lerobot/libero_goal_image \
     --output_dir ./inference_inputs \
     --frame_index 100
 ```
 
 This will create:
-- `frame_100_observation_images_*.jpg` - Image files
+- `frame_100_observation_images_image.jpg`, `frame_100_observation_images_wrist_image.jpg` - Image files (libero ships two cameras)
 - `frame_100_state.pt` - State tensor
 - `frame_100_task.txt` - Task prompt
 - `extraction_summary.json` - Summary of extracted files
@@ -237,7 +229,7 @@ Alternatively, you can extract from a specific episode and frame:
 
 ```sh
 python examples/pi0/dump_dataset_inputs.py \
-    --dataset_root /workspace/datasets/lerobot/aloha_mobile_cabinet \
+    --dataset_root /workspace/datasets/lerobot/libero_goal_image \
     --output_dir ./inference_inputs \
     --episode_index 0 \
     --frame_in_episode 50
@@ -247,7 +239,7 @@ Or extract multiple samples at once:
 
 ```sh
 python examples/pi0/dump_dataset_inputs.py \
-    --dataset_root /workspace/datasets/lerobot/aloha_mobile_cabinet \
+    --dataset_root /workspace/datasets/lerobot/libero_goal_image \
     --output_dir ./inference_inputs \
     --frame_indices 100 200 300
 ```
@@ -263,9 +255,9 @@ Configure the following fields:
 
 **Engine settings:**
 - `engine.model_variant` - Model variant: `"pi0.5"`
-- `engine.model` - Path to pretrained model (e.g., `/workspace/models/lerobot/pi05_base`)
+- `engine.model` - Path to pretrained model (e.g., `/workspace/models/lerobot/pi05_libero_base`)
 - `engine.tokenizer` - Path to tokenizer (e.g., `/workspace/models/google/paligemma-3b-pt-224`)
-- `engine.stat_path` - Path to dataset statistics (e.g., `/workspace/datasets/lerobot/aloha_mobile_cabinet/meta/stats.json`)
+- `engine.stat_path` - Path to dataset statistics of the dataset the checkpoint was trained on (e.g., `/workspace/datasets/lerobot/libero_goal_image/meta/stats.json`). The engine takes the action/state widths from this file, so it must match the checkpoint.
 - `engine.device` - Device to use (e.g., `"cuda", "npu", "musa"`)
 - `engine.use_quantiles` - Whether to use quantile normalization (default: `false` for pi0.5)
 
@@ -273,18 +265,15 @@ Configure the following fields:
 - `generate.images` - Dictionary mapping image keys to file paths:
   ```yaml
   images:
-    observation.images.cam_high: /path/to/image1.jpg
-    observation.images.cam_left_wrist: /path/to/image2.jpg
-    observation.images.cam_right_wrist: /path/to/image3.jpg
+    observation.images.image: /path/to/image.jpg
+    observation.images.wrist_image: /path/to/wrist_image.jpg
   ```
 - `generate.state_path` - Path to state tensor file (`.pt` file)
 - `generate.task_path` - Path to task prompt file (`.txt` file)
 - `generate.rename_map` (optional) - Map input keys to policy expected keys. Check the `features` key in your dataset's `meta/info.json` file to determine the correct mapping:
   ```yaml
   rename_map:
-    observation.images.cam_high: observation.images.base_0_rgb
-    observation.images.cam_left_wrist: observation.images.left_wrist_0_rgb
-    observation.images.cam_right_wrist: observation.images.right_wrist_0_rgb
+    observation.images.wrist_image: observation.images.image2
   ```
 
 ### Run Inference
@@ -302,11 +291,6 @@ The predicted action tensor is printed to the console and saved in the log file.
 
 ## Serving
 
-> **Not available yet.** The serving runner has not been migrated to
-> FlagOS-Robo, so `flagos-robo serve` does not exist in this repository
-> (`flagos_robo/serve/` is still a package stub). The configuration reference
-> below is kept for the upcoming port -- only the commands cannot be run yet.
-
 ### Edit Config
 
 ```sh
@@ -320,19 +304,18 @@ Configure the following fields:
 - `engine_args.host` - Server host (default: `"0.0.0.0"`)
 - `engine_args.port` - Server port (default: `5000`)
 - `engine_args.model_variant` - Model variant: `"pi0.5"`
-- `engine_args.model` - Path to pretrained model (e.g., `/workspace/models/lerobot/pi05_base`)
+- `engine_args.model` - Path to pretrained model (e.g., `/workspace/models/lerobot/pi05_libero_base`)
 - `engine_args.tokenizer` - Path to tokenizer (e.g., `/workspace/models/google/paligemma-3b-pt-224`)
-- `engine_args.stat_path` - Path to dataset statistics (e.g., `/workspace/datasets/lerobot/aloha_mobile_cabinet/meta/stats.json`)
+- `engine_args.stat_path` - Path to dataset statistics (e.g., `/workspace/datasets/lerobot/libero_goal_image/meta/stats.json`)
 - `engine_args.device` - Device to use (e.g., `"cuda", "npu", "musa"`)
 - `engine_args.use_quantiles` - Whether to use quantile normalization (default: `false` for pi0.5)
 - `engine_args.images_keys` - List of image keys expected by the model (do not change):
   ```yaml
   images_keys:
-    - observation.images.base_0_rgb
-    - observation.images.left_wrist_0_rgb
-    - observation.images.right_wrist_0_rgb
+    - observation.images.image
+    - observation.images.image2
   ```
-- `engine_args.images_shape` - Image shape `[C, H, W]` for warmup (e.g., `[3, 480, 640]`)
+- `engine_args.images_shape` - Image shape `[C, H, W]` for warmup (e.g., `[3, 256, 256]`)
 - `engine_args.state_key` - Key for state in the batch (e.g., `"observation.state"`)
 
 ### Run Serving
@@ -344,7 +327,7 @@ flagos-robo serve pi0_5 --config ./examples/pi0_5/conf/serve.yaml
 flagos-robo serve pi0_5 -c ./examples/pi0_5/conf/serve.yaml
 ```
 
-Serving logs are saved to `outputs/pi0_5_serve/logs/host_0_localhost.output` by default.
+Serving logs are saved to `outputs/pi0_5_serve/serve_logs/host_0_localhost.output` by default.
 
 ### Stop Serving
 
@@ -396,11 +379,11 @@ cd FlagOS-Robo/
 python examples/pi0/client_pi0.py \
   --host 127.0.0.1 \
   --port 5000 \
-  --img1 ./inference_inputs/frame_100_observation_images_cam_high.jpg \
-  --img2 ./inference_inputs/frame_100_observation_images_cam_left_wrist.jpg \
-  --img3 ./inference_inputs/frame_100_observation_images_cam_right_wrist.jpg \
+  --img1 ./inference_inputs/frame_100_observation_images_image.jpg \
+  --img2 ./inference_inputs/frame_100_observation_images_wrist_image.jpg \
+  --image-keys "observation.images.image,observation.images.image2" \
   --state-path ./inference_inputs/frame_100_state.pt \
-  --instruction "Grab the orange and put it into the basket."
+  --instruction "put the bowl on the plate"
 ```
 
 **Note**: The client must send image keys that match the `engine_args.images_keys` in the config.

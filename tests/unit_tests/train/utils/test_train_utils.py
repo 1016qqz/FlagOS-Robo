@@ -40,6 +40,7 @@ from flagos_robo.models.utils.constants import (
     TRAINING_STATE_DIR,
     TRAINING_STEP,
 )
+from flagos_robo.train.utils.random_utils import rng_state_filename
 from flagos_robo.train.utils.train_utils import (
     get_step_checkpoint_dir,
     get_step_identifier,
@@ -47,6 +48,7 @@ from flagos_robo.train.utils.train_utils import (
     load_training_step,
     save_checkpoint,
     save_optimizer_state,
+    save_rng_state_only,
     save_scheduler_state,
     save_training_state,
     save_training_step,
@@ -158,7 +160,10 @@ def test_save_training_state(tmp_path, optimizer, scheduler):
     state_dir = tmp_path / TRAINING_STATE_DIR
     assert state_dir.is_dir()
     assert (state_dir / TRAINING_STEP).is_file()
-    assert (state_dir / RNG_STATE).is_file()
+    # RNG state is written per rank (rank 0 here, since no process group is
+    # initialized), not under the legacy shared name -- see rng_state_filename.
+    assert (state_dir / rng_state_filename(0)).is_file()
+    assert not (state_dir / RNG_STATE).exists()
     assert (state_dir / OPTIMIZER_STATE).is_file()
     assert (state_dir / OPTIMIZER_PARAM_GROUPS).is_file()
     assert (state_dir / SCHEDULER_STATE).is_file()
@@ -169,9 +174,71 @@ def test_save_training_state_no_optim_no_scheduler(tmp_path):
     state_dir = tmp_path / TRAINING_STATE_DIR
     assert state_dir.is_dir()
     assert (state_dir / TRAINING_STEP).is_file()
-    assert (state_dir / RNG_STATE).is_file()
+    assert (state_dir / rng_state_filename(0)).is_file()
     assert not (state_dir / OPTIMIZER_STATE).exists()
     assert not (state_dir / SCHEDULER_STATE).exists()
+
+
+def test_save_rng_state_only_writes_just_the_rank_file(tmp_path):
+    """Non-main ranks must deposit their RNG file and nothing else.
+
+    save_checkpoint runs on rank 0 only (FSDP2 collectives already gathered
+    the shards), so every other rank calls save_rng_state_only. If it wrote
+    any other artifact, ranks would race over the same model/optimizer files.
+    """
+    save_rng_state_only(tmp_path)
+    state_dir = tmp_path / TRAINING_STATE_DIR
+    assert sorted(p.name for p in state_dir.iterdir()) == [rng_state_filename(0)]
+
+
+def test_rng_state_roundtrips_per_rank(tmp_path):
+    """Each rank's stream must come back as that rank's, not rank 0's."""
+    from flagos_robo.train.utils.random_utils import load_rng_state, save_rng_state
+
+    torch.manual_seed(7)
+    save_rng_state(tmp_path, rank=0)
+    expect_rank0 = torch.rand(3)
+    torch.manual_seed(99)
+    save_rng_state(tmp_path, rank=1)
+    expect_rank1 = torch.rand(3)
+    assert not torch.equal(expect_rank0, expect_rank1), "seeds collided; test is blind"
+
+    torch.rand(64)  # advance the stream, so a no-op restore would be caught
+    load_rng_state(tmp_path, rank=1)
+    assert torch.equal(torch.rand(3), expect_rank1)
+    load_rng_state(tmp_path, rank=0)
+    assert torch.equal(torch.rand(3), expect_rank0)
+
+
+def test_rng_state_load_falls_back_to_the_legacy_file(tmp_path):
+    """Checkpoints written before per-rank saving must stay resumable."""
+    from safetensors.torch import save_file
+
+    from flagos_robo.train.datasets.utils import flatten_dict
+    from flagos_robo.train.utils.random_utils import (
+        load_rng_state,
+        serialize_rng_state,
+    )
+
+    torch.manual_seed(555)
+    # Written directly under the legacy shared name: no current code path emits
+    # it any more (save_rng_state always writes the rank-scoped name), so the
+    # only way to stage an old checkpoint is to lay the file down by hand.
+    save_file(flatten_dict(serialize_rng_state()), str(tmp_path / RNG_STATE))
+    assert (tmp_path / RNG_STATE).is_file()
+    expect = torch.rand(3)
+
+    torch.rand(64)
+    load_rng_state(tmp_path, rank=5)  # no rank-5 file exists
+    assert torch.equal(torch.rand(3), expect)
+
+
+def test_rng_state_load_raises_when_nothing_is_saved(tmp_path):
+    """A missing RNG file must fail loudly, not silently keep the live stream."""
+    from flagos_robo.train.utils.random_utils import load_rng_state
+
+    with pytest.raises(FileNotFoundError):
+        load_rng_state(tmp_path, rank=1)
 
 
 def test_save_checkpoint_creates_files(tmp_path, model, optimizer, scheduler):

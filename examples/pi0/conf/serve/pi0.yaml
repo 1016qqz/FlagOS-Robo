@@ -17,6 +17,7 @@
     host: 0.0.0.0
     port: 5000
     model: /workspace/models/lerobot/pi0_base
+    model_variant: pi0
     tokenizer: /workspace/models/google/paligemma-3b-pt-224
     stat_path: /workspace/datasets/lerobot/aloha_mobile_cabinet/meta/stats.json
     device: "cuda"

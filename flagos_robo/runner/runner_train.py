@@ -377,6 +377,10 @@ def run_node(
     # Get the number of visible devices from the environment variable, e.g. CUDA_VISIBLE_DEVICES, MLU_VISIBLE_DEVICES
     # visible_devices = cur_envs.get("CUDA_VISIBLE_DEVICES", None)
     visible_devices = next((v for k, v in cur_envs.items() if k.endswith("_VISIBLE_DEVICES")), None)
+    # Initialised before the branch: get_nproc_per_node() below is reached
+    # unconditionally, so leaving this unbound raises NameError whenever no
+    # *_VISIBLE_DEVICES variable is set.  Mirrors CloudTrainRunner.run().
+    num_visible_devices = None
     if visible_devices is not None and isinstance(visible_devices, str):
         visible_devices = visible_devices.split(",")
         num_visible_devices = len(visible_devices)

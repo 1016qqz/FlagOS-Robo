@@ -27,7 +27,10 @@ system:
     save_checkpoint: true
     # Number of steps between checkpoints
     save_freq: 1000
-  # TODO(yupu): Support resuming from checkpoint
+    # Absolute path to a checkpoint step directory to resume from, e.g.
+    # /workspace/outputs/pi0_5_train/checkpoints/000100 (or the `last` symlink).
+    # Restores model, optimizer, scheduler, per-rank RNG and sampler position.
+    # resume_from:
 
 model:
   model_name: pi0.5

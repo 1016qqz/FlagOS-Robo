@@ -17,5 +17,10 @@
     host: 0.0.0.0
     port: 5000
     model_variant: Gr00tN15
-    model: /workspace/models/gr00t_n1_5_train/checkpoints/last
+    # Point at the `pretrained_model` subdirectory of a checkpoint, not at the
+    # checkpoint directory itself: `checkpoints/<step>/` only holds `pretrained_model/`
+    # and `training_state/`, while the weights plus policy_preprocessor.json /
+    # policy_postprocessor.json that TrainablePolicy.from_pretrained needs all live
+    # one level deeper.
+    model: /workspace/b2_runs/gr00t_n1_5/leg1/ckpt/checkpoints/000100/pretrained_model
     device: "cuda"

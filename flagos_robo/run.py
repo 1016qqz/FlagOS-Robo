@@ -12,25 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Hydra entry point for FlagOS-Robo training jobs.
+"""Hydra entry point for FlagOS-Robo train / serve / inference jobs.
 
-Provenance: this module is a *train-only subset rewrite* of
+Provenance: this module is a *subset rewrite* of
 ``flagscale/run.py`` (211 lines, FlagScale baseline f8e9a62c), not a verbatim
 copy.  Three deliberate differences from upstream, recorded here so a reader
 can reconcile the two files:
 
-1. ``VALID_TASKS`` is narrowed to ``{"train"}`` (upstream also has inference,
-   compress, serve, rl) and ``TASK_ACTIONS["train"]`` drops ``auto_tune``.
-   Reason: ``runner_inference``, ``runner_serve`` and ``autotuner_factory``
+1. ``VALID_TASKS`` is narrowed to ``{"train", "serve", "inference"}`` (upstream
+   also has ``compress`` and ``rl``) and every ``TASK_ACTIONS`` entry drops
+   ``auto_tune``.  Reason: ``autotuner_factory`` and the compress/RL runners
    are outside the FlagOS-Robo migration scope, so importing them here would
-   fail at module load.
+   fail at module load.  ``handle_auto_tune()`` is removed for the same reason.
 2. The ``FLAGSCALE_USE_V1`` switch and the V1 code path are removed.  Upstream
    defaults the switch to ``"1"``, which makes ``get_runner()`` return
    ``flagscale.runner.runner_base.Runner``; that module is not part of this
-   repository.  FlagOS-Robo always uses the SSH/cloud train runners.
-3. ``execute_action()`` has no per-task branching (upstream keeps serve tasks
-   in the background under ``test``).  Here ``test`` always runs in the
-   foreground so output streams directly.
+   repository.  FlagOS-Robo always uses the legacy SSH/cloud runners.
+3. ``get_runner()`` offers a cloud runner for ``train`` only.  Upstream also
+   has ``CloudServeRunner``; that class was not migrated (it carries the
+   PD-disaggregation / Ray code paths that FlagOS-Robo does not use), so a
+   ``serve`` task with ``runner.type=cloud`` raises ``NotImplementedError``.
+4. ``TASK_ACTIONS["serve"]`` is ``{"run", "dryrun", "test", "stop"}``: upstream
+   omits ``dryrun`` but :class:`SSHServeRunner.run` accepts ``dryrun=True``, so
+   it is exposed here.  ``query`` is omitted for ``serve`` and ``inference``
+   because only the train runner implements a public ``query()``.
 
 Everything else -- cwd restoration, config-error wrapping, the
 ``experiment.deploy`` compatibility move, the monitoring flags read on
@@ -47,12 +52,27 @@ from omegaconf import DictConfig, OmegaConf
 from omegaconf.errors import OmegaConfBaseException
 
 from flagos_robo.logger import logger
+from flagos_robo.runner.runner_inference import SSHInferenceRunner
+from flagos_robo.runner.runner_serve import SSHServeRunner
 from flagos_robo.runner.runner_train import CloudTrainRunner, SSHTrainRunner
 
-VALID_TASKS = {"train"}
+VALID_TASKS = {"train", "serve", "inference"}
 
-# task_type -> allowed actions
-TASK_ACTIONS = {"train": {"run", "dryrun", "test", "stop", "query"}}
+# task_type -> SSH runner class
+SSH_RUNNER_MAP = {
+    "train": SSHTrainRunner,
+    "serve": SSHServeRunner,
+    "inference": SSHInferenceRunner,
+}
+
+# task_type -> allowed actions.  Only the train runner implements a public
+# query(); SSHServeRunner has _query_status() and SSHInferenceRunner has no
+# status query at all, so "query" is train-only.
+TASK_ACTIONS = {
+    "train": {"run", "dryrun", "test", "stop", "query"},
+    "serve": {"run", "dryrun", "test", "stop"},
+    "inference": {"run", "dryrun", "test", "stop"},
+}
 
 
 def check_and_reset_deploy_config(config: DictConfig) -> None:
@@ -83,9 +103,13 @@ def get_runner(config: DictConfig, task_type: str):
     runner_type = config.experiment.runner.get("type", "ssh")
 
     if runner_type == "cloud":
-        return CloudTrainRunner(config)
+        if task_type == "train":
+            return CloudTrainRunner(config)
+        raise NotImplementedError(
+            f"Task type '{task_type}' is not supported by the cloud runner; use 'ssh'"
+        )
     if runner_type == "ssh":
-        return SSHTrainRunner(config)
+        return SSH_RUNNER_MAP[task_type](config)
     raise NotImplementedError(
         f"Runner type '{runner_type}' is not supported by FlagOS-Robo; use 'ssh' or 'cloud'"
     )
@@ -93,18 +117,29 @@ def get_runner(config: DictConfig, task_type: str):
 
 def execute_action(runner, action: str, task_type: str, config: DictConfig) -> None:
     if action == "run":
-        enable_monitoring = config.experiment.runner.get("enable_monitoring", False)
-        enable_gpu_health_check = config.experiment.runner.get("enable_gpu_health_check", False)
-        runner.run(
-            enable_monitoring=enable_monitoring, enable_gpu_health_check=enable_gpu_health_check
-        )
-        if enable_monitoring:
-            logger.info("Monitor service will be started automatically when training begins.")
+        if task_type == "train":
+            # The monitoring flags are train-only: SSHServeRunner.run and
+            # SSHInferenceRunner.run take (background, dryrun) and would raise
+            # TypeError on these keywords.
+            enable_monitoring = config.experiment.runner.get("enable_monitoring", False)
+            enable_gpu_health_check = config.experiment.runner.get("enable_gpu_health_check", False)
+            runner.run(
+                enable_monitoring=enable_monitoring, enable_gpu_health_check=enable_gpu_health_check
+            )
+            if enable_monitoring:
+                logger.info("Monitor service will be started automatically when training begins.")
+        else:
+            runner.run()
     elif action == "dryrun":
         runner.run(dryrun=True)
     elif action == "test":
-        # Training runs in the foreground so output streams directly.
-        runner.run(background=False)
+        # Serve tasks are long-running daemons validated by an external client,
+        # so they must start in the background even under `test`.  Train and
+        # inference run in the foreground so output streams directly.
+        if task_type == "serve":
+            runner.run()
+        else:
+            runner.run(background=False)
     elif action == "stop":
         runner.stop()
     elif action == "query":

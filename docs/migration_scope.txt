@@ -68,6 +68,20 @@ flagscale.serve.metric
 flagscale.runner.runner_train
 flagscale.runner.runner_base_legacy
 flagscale.runner.utils
+
+# --- W5 B5: serve + inference runners (SSH path only) --------------------
+# Migrated as *cut-down* rewrites, not verbatim copies: runner_serve.py goes
+# from upstream's 1441 lines to 414, and runner_inference.py from 322 to 321
+# (the `backend in ["vllm"]` assert is dropped).  Cut from runner_serve:
+# CloudServeRunner, the
+# PD-disaggregation (prefill/decode) paths, the Ray multi-node paths, the vLLM
+# engine-args plumbing (`experiment.runner.cli_args`), `_serve_alive` and
+# `_profile_serve` (only caller is auto_tuner/tuner_serve.py, not migrated).
+# `_get_args_vllm` is renamed `_get_args_serve` - despite the name it only
+# dumps the resolved config into the scripts dir and returns --config-path,
+# nothing vLLM-specific.
+flagscale.runner.runner_serve
+flagscale.runner.runner_inference
 =flagscale.runner.backend
 flagscale.runner.backend.backend_base
 flagscale.runner.backend.backend_native_train

@@ -15,24 +15,27 @@
 engine:
   # Model variant: "pi0" or "pi0.5"
   model_variant: "pi0.5"
-  model: /workspace/models/lerobot/pi05_base
+  model: /workspace/models/lerobot/pi05_libero_base
   tokenizer: /workspace/models/google/paligemma-3b-pt-224
   # TODO: (yupu) Use the stat safetensors
-  stat_path: /workspace/datasets/lerobot/aloha_mobile_cabinet/meta/stats.json
+  # Must be the stats of the dataset the checkpoint was trained on: the engine
+  # overrides the action/state feature widths from `action.mean` / `state.mean`
+  # in this file (libero: action 7, state 8).
+  stat_path: /workspace/datasets/lerobot/libero_goal_image/meta/stats.json
   device: "cuda"
   # By default, Pi0.5 uses quantiles for state and action normalization, if false, it uses mean and std instead
   use_quantiles: false
 
 generate:
+  # Keys are the dataset's own image keys; fill the values in with the files
+  # produced by `examples/pi0/dump_dataset_inputs.py` (libero ships two cameras).
   images:
-    observation.images.cam_high: /path/to/cam_high_image.jpg
-    observation.images.cam_left_wrist: /path/to/cam_left_wrist_image.jpg
-    observation.images.cam_right_wrist: /path/to/cam_right_wrist_image.jpg
+    observation.images.image: /path/to/image.jpg
+    observation.images.wrist_image: /path/to/wrist_image.jpg
   state_path: /path/to/state_file.pt
   task_path: /path/to/task_file.txt
   # Optional rename_map to map input keys to policy expected keys
   # Check the features key in your dataset's meta/info.json file to determine the correct mapping
+  # pi05_libero_base expects `image` + `image2`, so only the wrist camera is renamed.
   rename_map:
-    observation.images.cam_high: observation.images.base_0_rgb
-    observation.images.cam_left_wrist: observation.images.left_wrist_0_rgb
-    observation.images.cam_right_wrist: observation.images.right_wrist_0_rgb
+    observation.images.wrist_image: observation.images.image2
