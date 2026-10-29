@@ -31,15 +31,31 @@ FlagOS-Robo 打通从数据采集到真机与评测平台（[FlagEval](https://g
 - 支持 [RoboOS](https://github.com/FlagOpen/RoboOS) 跨本体协作，实现不同数据格式兼容、高效端云协同、真机评测等功能。
 
 
+## 安装
+
+```sh
+git clone https://github.com/flagos-ai/FlagOS-Robo.git
+cd FlagOS-Robo
+pip install -e .
+flagos-robo --help
+```
+
+上面只装了命令行入口。每个模型还有自己的运行依赖（PyTorch、模型仓库、数据集），
+按下表对应模型文档里的 `Installation` 一节装。
+
 ## 快速上手🚀
 
 | 模型 | 类型 | 模型权重 | 训练 | 离线推理 | 在线推理 | 评估 |
 |--------------|--------|--------|--------|-------------------|----------------------|---------------------------|
-| PI0 | VLA | [Huggingface](https://huggingface.co/lerobot/pi0_base) | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/pi0/README.md#training) | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/pi0/README.md#inference) | ✅ [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/pi0/README.md#serving) | ❌ |
-| PI0.5 | VLA | [Huggingface](https://huggingface.co/lerobot/pi05_libero_base) | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/pi0_5/README.md#training) | ✅ [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/pi0_5/README.md#inference) | ✅   [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/pi0_5/README.md#serving)|  ❌ |
-| RoboBrain-2.0 | VLM | [Huggingface](https://huggingface.co/BAAI/RoboBrain2.0-7B) | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/qwen2_5_vl/README.md) | ✅[Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/robobrain2/README.md#inference) | ✅[Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/robobrain2/README.md#serving) | ✅   [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/qwen2_5_vl/README.md#evaluation) |
-| RoboBrain-2.5 | VLM | [Huggingface](https://huggingface.co/collections/BAAI/robobrain25) | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/qwen3_vl/README.md) | ✅[Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/robobrain2_5/README.md#inference) | ✅[Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/robobrain2_5/README.md#serving) | ✅   [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/qwen2_5_vl/README.md#evaluation) |
-| RoboBrain-X0 | VLA | [Huggingface](https://huggingface.co/BAAI/RoboBrain-X0-Preview) | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/robobrain_x0/README.md#training) | ❌ | ✅   [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/robobrain_x0/README.md#serving)| ❌ |
-| Qwen-GR00T | VLA | [Huggingface](https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct) | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/qwen_gr00t/README.md#training) | ✅ [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/qwen_gr00t/README.md#inference) | ✅   [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/qwen_gr00t/README.md#serving)| ✅   [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/qwen_gr00t/README.md#evaluation) |
-| GR00T-N1.5 | VLA | [Huggingface](https://huggingface.co/nvidia/GR00T-N1.5-3B) | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/tree/main/examples/gr00t_n1_5#training) | ❌ | ✅   [Guide](https://github.com/flagos-ai/FlagScale/tree/main/examples/gr00t_n1_5#serving)|  ❌ |
-| KERV | VLA | [Huggingface](https://huggingface.co/openvla/openvla-7b) | ✅ [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/kerv/README.md) | ✅ [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/kerv/README.md#run-inference) | ❌ | ❌ |
+| PI0 | VLA | [Huggingface](https://huggingface.co/lerobot/pi0_base) | ✅︎  [文档](./examples/pi0/README.md#training) | ✅︎  [文档](./examples/pi0/README.md#inference) | ✅ [文档](./examples/pi0/README.md#serving) | ❌ |
+| PI0.5 | VLA | [Huggingface](https://huggingface.co/lerobot/pi05_libero_base) | ✅︎  [文档](./examples/pi0_5/README.md#training) | ✅ [文档](./examples/pi0_5/README.md#inference) | ✅   [文档](./examples/pi0_5/README.md#serving) | ❌ |
+| GR00T-N1.5 | VLA | [Huggingface](https://huggingface.co/nvidia/GR00T-N1.5-3B) | ✅︎  [文档](./examples/gr00t_n1_5/README.md#training) | ❌ | ✅   [文档](./examples/gr00t_n1_5/README.md#serving) | ❌ |
+
+早期版本列过的 RoboBrain-2.0 / 2.5、RoboBrain-X0、Qwen-GR00T、KERV 不在本仓库里，
+它们留在 [FlagScale](https://github.com/flagos-ai/FlagScale)。
+
+## 文档
+
+- [快速上手](./docs/GETTING_STARTED_cn.md) —— 怎么装、怎么确认装好了、`flagos-robo` 四个子命令各是干什么的。
+- [变更记录](./CHANGELOG.md) —— 每个版本包含什么。
+- [docs/](./docs/README.md) —— 迁移记录、验收报告、精度基线（开发过程记录，不是用户指南）。

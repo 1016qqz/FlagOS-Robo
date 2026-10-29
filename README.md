@@ -21,20 +21,40 @@ of intelligent agents.
 
 ## Feature Highlights
 
-- [FlagScale](https://github.com/flagos-ai/FlagScale/tree/main) as users' entrypoint supports robot related AI model training and inference, including Pi-0, RoboBrain2, and RoboBrainX0, etc.
+- FlagOS-Robo is the entrypoint for users: a single `flagos-robo` command line covers training, offline inference, and online serving for the models shipped in [`examples/`](./examples) — currently PI0, PI0.5, and GR00T-N1.5.
 - FlagOS-Robo supports [RoboOS](https://github.com/FlagOpen/RoboOS)-based cross-embodiment collaboration,
   ensuring compatibility with different data formats, efficient edge-cloud coordination,
   and real-machine evaluation.
+
+## Installation
+
+```sh
+git clone https://github.com/flagos-ai/FlagOS-Robo.git
+cd FlagOS-Robo
+pip install -e .
+flagos-robo --help
+```
+
+The command above installs the launcher only. Each model needs its own runtime
+dependencies (PyTorch, the model repository, datasets) — follow the
+`Installation` section of that model's guide below.
 
 ## Quick Start🚀
 
 | Models | Type | Checkpoint | Train | Inference | Serve | Evaluate |
 |--------------|--------|--------|--------|-------------------|----------------------|---------------------------|
-| PI0 | VLA | [Huggingface](https://huggingface.co/lerobot/pi0_base) | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/pi0/README.md#training) | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/pi0/README.md#inference) | ✅ [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/pi0/README.md#serving) | ❌ |
-| PI0.5 | VLA | [Huggingface](https://huggingface.co/lerobot/pi05_libero_base) | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/pi0_5/README.md#training) | ✅ [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/pi0_5/README.md#inference) | ✅   [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/pi0_5/README.md#serving)|  ❌ |
-| RoboBrain-2.0 | VLM | [Huggingface](https://huggingface.co/BAAI/RoboBrain2.0-7B) | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/qwen2_5_vl/README.md) | ✅[Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/robobrain2/README.md#inference) | ✅[Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/robobrain2/README.md#serving) | ✅   [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/qwen2_5_vl/README.md#evaluation) |
-| RoboBrain-2.5 | VLM | [Huggingface](https://huggingface.co/collections/BAAI/robobrain25) | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/qwen3_vl/README.md) | ✅[Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/robobrain2_5/README.md#inference) | ✅[Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/robobrain2_5/README.md#serving) | ✅   [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/qwen2_5_vl/README.md#evaluation) |
-| RoboBrain-X0 | VLA | [Huggingface](https://huggingface.co/BAAI/RoboBrain-X0-Preview) | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/robobrain_x0/README.md#training) | ❌ | ✅   [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/robobrain_x0/README.md#serving)| ❌ |
-| Qwen-GR00T | VLA | [Huggingface](https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct) | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/qwen_gr00t/README.md#training) | ✅ [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/qwen_gr00t/README.md#inference) | ✅   [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/qwen_gr00t/README.md#serving)| ✅   [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/qwen_gr00t/README.md#evaluation) |
-| GR00T-N1.5 | VLA | [Huggingface](https://huggingface.co/nvidia/GR00T-N1.5-3B) | ✅︎  [Guide](https://github.com/flagos-ai/FlagScale/tree/main/examples/gr00t_n1_5#training) | ❌ | ✅   [Guide](https://github.com/flagos-ai/FlagScale/tree/main/examples/gr00t_n1_5#serving)|  ❌ |
-| KERV | VLA | [Huggingface](https://huggingface.co/openvla/openvla-7b) | ✅ [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/kerv/README.md) | ✅ [Guide](https://github.com/flagos-ai/FlagScale/blob/main/examples/kerv/README.md#run-inference) | ❌ | ❌ |
+| PI0 | VLA | [Huggingface](https://huggingface.co/lerobot/pi0_base) | ✅︎  [Guide](./examples/pi0/README.md#training) | ✅︎  [Guide](./examples/pi0/README.md#inference) | ✅ [Guide](./examples/pi0/README.md#serving) | ❌ |
+| PI0.5 | VLA | [Huggingface](https://huggingface.co/lerobot/pi05_libero_base) | ✅︎  [Guide](./examples/pi0_5/README.md#training) | ✅ [Guide](./examples/pi0_5/README.md#inference) | ✅   [Guide](./examples/pi0_5/README.md#serving) | ❌ |
+| GR00T-N1.5 | VLA | [Huggingface](https://huggingface.co/nvidia/GR00T-N1.5-3B) | ✅︎  [Guide](./examples/gr00t_n1_5/README.md#training) | ❌ | ✅   [Guide](./examples/gr00t_n1_5/README.md#serving) | ❌ |
+
+Models listed in earlier releases (RoboBrain-2.0 / 2.5, RoboBrain-X0,
+Qwen-GR00T, KERV) are not part of this repository; they remain in
+[FlagScale](https://github.com/flagos-ai/FlagScale).
+
+## Documentation
+
+- [Getting Started](./docs/GETTING_STARTED.md) — install, verify, and the four
+  `flagos-robo` subcommands.
+- [Changelog](./CHANGELOG.md) — what each release contains.
+- [docs/](./docs/README.md) — migration records, acceptance reports, precision
+  baselines (development history, not user guides).
