@@ -18,7 +18,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flagos-robo"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "FlagOS-Robo: embodied-AI (VLA) model training and inference development kit, backed by BAAI."
 readme = "README.md"
 license = { text = "Apache-2.0" }

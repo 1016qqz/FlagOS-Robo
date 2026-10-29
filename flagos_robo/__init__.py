@@ -21,7 +21,7 @@ This package must stay importable in a **pure PyTorch** environment with
 
 __all__ = ["__version__"]
 
-_FALLBACK_VERSION = "0.1.0.dev0"
+_FALLBACK_VERSION = "0.1.0"
 
 
 def _detect_version() -> str:
