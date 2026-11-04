@@ -135,7 +135,7 @@ jobs:
           path: _ci/FlagScale
 
       - name: Scan migration scope (training entry points)
-        # Must stay byte-identical to the command in docs/MIGRATION_SOP.md so
+        # Must stay byte-identical to the command in docs/archive/MIGRATION_SOP.md so
         # that CI and the documented manual procedure cannot drift apart.
         # test_ci_workflow.py compares the flag sets of the two.
         run: |
@@ -149,7 +149,7 @@ jobs:
       - name: Scan migration scope (launcher)
         # --discover-seeds cannot find the runner: nothing under examples/
         # imports it, the CLI reaches it by string. Both entry points must be
-        # named explicitly. See docs/MIGRATION_SOP.md.
+        # named explicitly. See docs/archive/MIGRATION_SOP.md.
         run: |
           python tools/check_import_closure.py \
             --source-root _ci/FlagScale --package flagscale \

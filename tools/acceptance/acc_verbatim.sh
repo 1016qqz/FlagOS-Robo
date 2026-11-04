@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Acceptance groups 3-6 from the W1 plan's section 5, with two corrections that
-# the first verbatim run forced (see docs/W1_ACCEPTANCE.md):
+# the first verbatim run forced (see docs/archive/W1_ACCEPTANCE.md):
 #   - the closure flag is --planned-from, not --scope (plan's §5 wrote no flags
 #     at all; the SOP and CI commands were already correct)
 #   - `grep ... || echo OK` conflates "nothing matched" (rc=1) with "target does
@@ -61,7 +61,7 @@ run  g3_checker 0 python tools/check_no_megatron.py
 run  g3_piplist ANY bash -c 'pip list 2>/dev/null | grep -i megatron; echo "pip_grep_rc=$?"'
 scan g3_srcgrep 'megatron' flagos_robo/
 
-echo "##### GROUP 4 -- import closure is self-contained (flags per docs/MIGRATION_SOP.md)"
+echo "##### GROUP 4 -- import closure is self-contained (flags per docs/archive/MIGRATION_SOP.md)"
 run g4_closure 0 python tools/check_import_closure.py \
   --source-root /workspace/flagscale_ref/FlagScale --package flagscale \
   --planned-from docs/migration_scope.txt \

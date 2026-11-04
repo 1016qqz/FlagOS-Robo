@@ -58,4 +58,4 @@ flagos-robo --help
 
 - [快速上手](./docs/GETTING_STARTED_cn.md) —— 怎么装、怎么确认装好了、`flagos-robo` 四个子命令各是干什么的。
 - [变更记录](./CHANGELOG.md) —— 每个版本包含什么。
-- [docs/](./docs/README.md) —— 迁移记录、验收报告、精度基线（开发过程记录，不是用户指南）。
+- [文档目录](./docs/README.md) —— 模型指南、精度比对方法和历史开发记录。

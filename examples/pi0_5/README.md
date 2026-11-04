@@ -2,6 +2,15 @@
 
 This guide covers how to train, run inference, and serve PI0.5 models using FlagOS-Robo.
 
+## Model notes
+
+Compared with PI0, PI0.5 uses AdaRMS conditioning in its action expert, a
+longer 200-token prompt limit (PI0 uses 48), and a discrete state input rather
+than PI0's `state_proj` embedding. The implementation is adapted from
+[OpenPI](https://github.com/Physical-Intelligence/openpi); see the
+[PI0.5 paper](https://arxiv.org/abs/2504.16054) for the model design. The port
+is distributed under this repository's Apache 2.0 license.
+
 ## Installation
 
 ### Clone Repository
@@ -338,36 +347,9 @@ flagos-robo serve pi0_5 --stop
 
 ## Evaluation
 
-> **Not available yet.** `flagos-robo eval` does not exist in this
-> repository: the FlagEval integration has not been migrated. The parameter
-> reference below is kept for the upcoming port.
-
-FlagOS-Robo supports online evaluation via FlagEval. You will need a `FLAGEVAL_SECRET` — contact the team to obtain one before proceeding.
-
-### Run Evaluation
-
-```sh
-cd FlagOS-Robo/
-FLAGEVAL_SECRET=<your_secret> flagos-robo eval robo \
-    --model-name pi0_5 \
-    --datasets libero_10 \
-    --server-host <your_model_server_host> \
-    --server-port <your_model_server_port> \
-    --poll-interval 30 \
-    --model-id <your_model_id>
-```
-
-Configure the following fields:
-
-- `FLAGEVAL_SECRET` - Authentication secret (contact the team to obtain)
-- `--model-name` - Model name: `"pi0_5"`
-- `--datasets` - Evaluation dataset(s), e.g. `libero_10`
-- `--server-host` - Host/IP of your model server (FlagEval will connect back to this address)
-- `--server-port` - Port of your model server
-- `--poll-interval` - How often (in seconds) to poll for results
-- `--model-id` - A unique identifier for this evaluation run (e.g., `pi0_5_exp1`)
-
-By default the script automatically starts the model server before submitting the evaluation. If your model server is already running, add `--attach` to skip the startup step.
+This repository does not provide an `eval` command. To evaluate a served model,
+use the [FlagEval-Robo platform](https://embodiedverse.flageval.net/home) and
+follow its current instructions for submitting a model endpoint.
 
 
 ### Test Server with Client

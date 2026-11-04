@@ -1,7 +1,4 @@
-# docs/
-
-Two kinds of document live here. Read the first group if you are trying to use
-the repository; the second group is development history.
+# Documentation
 
 ## User documentation
 
@@ -19,23 +16,11 @@ are not here — they live next to each model:
 Release contents are in [CHANGELOG.md](../CHANGELOG.md); how to contribute is
 in [CONTRIBUTING.md](../CONTRIBUTING.md).
 
-## Development records
+## Development references
 
-These describe how this repository was split out of
-[FlagScale](https://github.com/flagos-ai/FlagScale) and how each stage was
-checked. They are records of work already done, written in Chinese, and are not
-instructions for users. Line counts are as of the 0.1.0 release.
-
-| Document | Lines | What it records |
-|---|---|---|
-| [MIGRATION_MAP.md](./MIGRATION_MAP.md) | 155 | Which FlagScale module went where. Settled in week 1 and not changed afterwards |
-| [migration_scope.txt](./migration_scope.txt) | 125 | The planned module prefix list, read by `tools/check_import_closure.py --planned-from` |
-| [MIGRATION_SOP.md](./MIGRATION_SOP.md) | 334 | The per-batch procedure used while moving code in |
-| [PRECISION_BASELINE.md](./PRECISION_BASELINE.md) | 270 | How each migrated batch was checked against FlagScale numerically |
-| [W1_ACCEPTANCE.md](./W1_ACCEPTANCE.md) | 207 | Week-1 acceptance: the six command groups, run for real, with their output |
-| [W2W3_ACCEPTANCE.md](./W2W3_ACCEPTANCE.md) | 352 | Week-2/3 acceptance: the eight command groups A1–A8, run for real |
-| [REVIEW_W1_W3.md](./REVIEW_W1_W3.md) | 424 | Code review of the week-1 to week-3 state |
-| [REVIEW_W1_W4.md](./REVIEW_W1_W4.md) | 339 | What that review actually changed, and what was deliberately deferred |
+- [Precision comparison guide](./PRECISION_BASELINE.md) explains the repository's numerical comparison tool.
+- [Migration map](./MIGRATION_MAP.md) and [migration scope](./migration_scope.txt) record the FlagScale baseline used by repository checks.
+- [Historical migration, acceptance, and review records](./archive/README.md) are retained for provenance. They describe earlier repository states, not current user instructions.
 
 ## Checks you can run yourself
 

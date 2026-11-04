@@ -1,5 +1,8 @@
 # FlagOS-Robo 迁移映射表（MIGRATION_MAP）
 
+> 历史来源记录：用于说明独立建仓时的模块映射与 FlagScale 基线，也供仓库门禁核对基线。
+> 当前安装、训练和服务方法请从 [文档目录](./README.md) 进入；下文的周次与状态描述不代表当前功能状态。
+
 > 本文件记录 FlagOS-Robo 从 FlagScale 独立建仓时「哪个模块搬到哪里」的**对照表**。W1 定稿，W2 起不得擅自变更；
 > 如需变更，必须在本文件记录变更原因与日期。
 
@@ -32,7 +35,7 @@ git rev-parse HEAD   # 必须等于 f8e9a62c499d526a6ffa47f533bcf342330b7326
 | `flagscale.models.configs` | `flagos_robo.models.configs` | **W1** | `types` 被引 25 次 |
 | `flagscale.models.pi0` | `flagos_robo.models.pi0` | W2–W3 | 4 文件 / 1674 LOC |
 | `flagscale.models.pi05` | `flagos_robo.models.pi05` | W2–W3 | 6 文件 / 2053 LOC |
-| `flagscale.models.vla` | `flagos_robo.models.vla` | W2–W3 | 27 文件中迁 21 / 4958 LOC；`qwen_gr00t/`(4) + `vlm/`(2) 留在 FlagScale。`migration_scope.txt` 里**逐个列出要迁的子包**而不写裸子树，否则这两个也被算成计划内；扫描时配 `--cut` 两条声明（见 MIGRATION_SOP.md §G1） |
+| `flagscale.models.vla` | `flagos_robo.models.vla` | W2–W3 | 27 文件中迁 21 / 4958 LOC；`qwen_gr00t/`(4) + `vlm/`(2) 留在 FlagScale。`migration_scope.txt` 里**逐个列出要迁的子包**而不写裸子树，否则这两个也被算成计划内；扫描时配 `--cut` 两条声明（见 [迁移记录](./archive/MIGRATION_SOP.md) §G1） |
 | `flagscale.train.datasets` | `flagos_robo.data` | W2–W3 | **改名**，对齐架构图「数据层」；12 文件 / 6482 LOC |
 | `flagscale.train.processor` | `flagos_robo.processor` | W2–W3 | **提级**，processor 非训练专属；15 文件 / 4524 LOC |
 | `flagscale.train.utils` | `flagos_robo.train.utils` | W2–W3 | 8 文件 / 1640 LOC |

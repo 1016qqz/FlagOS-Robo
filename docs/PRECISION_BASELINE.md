@@ -1,5 +1,8 @@
 # FlagOS-Robo 精度对齐基线方案
 
+> 本文保留独立建仓时的数值对齐方法和 `tools/compare_precision.py` 用法。
+> 文中的 W2–W3 实验要求与路径是历史背景；运行当前模型请参阅 [模型指南](./README.md)。
+
 > 适用范围：W2-W3 每批代码从 FlagScale 迁入后的精度验收。
 > 参考基线：FlagScale @ `f8e9a62c499d526a6ffa47f533bcf342330b7326`，同一台 8xH800，同一容器。
 > 工具：`tools/compare_precision.py`

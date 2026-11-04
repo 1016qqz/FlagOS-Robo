@@ -56,5 +56,5 @@ Qwen-GR00T, KERV) are not part of this repository; they remain in
 - [Getting Started](./docs/GETTING_STARTED.md) — install, verify, and the four
   `flagos-robo` subcommands.
 - [Changelog](./CHANGELOG.md) — what each release contains.
-- [docs/](./docs/README.md) — migration records, acceptance reports, precision
-  baselines (development history, not user guides).
+- [Documentation index](./docs/README.md) — model guides, precision comparison,
+  and an archive of development records.

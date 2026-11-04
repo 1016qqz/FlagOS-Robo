@@ -268,7 +268,7 @@ class TestCommandsMatchTheDocs:
         Comparing only the first command in each file would let the second
         drift unnoticed, so both are collected and compared as a set.
         """
-        sop = (REPO_ROOT / "docs" / "MIGRATION_SOP.md").read_text().replace("\\\n", " ")
+        sop = (REPO_ROOT / "docs" / "archive" / "MIGRATION_SOP.md").read_text().replace("\\\n", " ")
 
         def invocations(blob):
             found = []

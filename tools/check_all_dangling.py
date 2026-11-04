@@ -98,7 +98,7 @@ def scan_module(path):
 
 # os.walk 要剪掉的目录名。
 #
-# `_ci` 不是可选项，是实测出来的缺陷修复：docs/MIGRATION_SOP.md 要求把上游
+# `_ci` 不是可选项，是实测出来的缺陷修复：docs/archive/MIGRATION_SOP.md 要求把上游
 # FlagScale 克隆到 `_ci/FlagScale` 供 check_import_closure.py 的 --source-root
 # 使用。那棵树里全是上游代码，其中就有本仓已经修掉的 guarded-import + __all__
 # 形态。不剪掉的话，本工具会把**上游的**悬挂名报成本仓的缺陷：
