@@ -408,7 +408,11 @@ def test_dataloader_seeding_is_gated_not_unconditional(entry_point):
     neither would leave worker RNGs uncontrolled and make the two sides
     diverge for a reason that has nothing to do with the model.
     """
-    source, tree = _train_loop_tree(entry_point)
+    _, entry_tree = _train_loop_tree(entry_point)
+    assert _call_lines(entry_tree, "build_training_dataloader"), (
+        f"{entry_point} bypasses the shared DataLoader setup"
+    )
+    source, tree = _train_loop_tree("utils/training_runtime.py")
 
     loader = _call_lines(tree, "DataLoader")
     assert len(loader) == 1, f"expected one DataLoader call, got {loader}"

@@ -18,7 +18,7 @@ import inspect
 from abc import ABC, abstractmethod
 from logging import getLogger
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, Generic, TypeVar
 
 from safetensors.torch import load_model, save_file
 from torch import Tensor, nn
@@ -32,8 +32,10 @@ if TYPE_CHECKING:
 
 logger = getLogger(__name__)
 
+ForwardOutputT = TypeVar("ForwardOutputT")
 
-class TrainablePolicy(nn.Module, ABC):
+
+class TrainablePolicy(nn.Module, ABC, Generic[ForwardOutputT]):
     """Base class for all trainable VLA policies.
 
     Provides generic ``save_pretrained`` / ``from_pretrained`` that
@@ -43,7 +45,12 @@ class TrainablePolicy(nn.Module, ABC):
     config fixups before weight loading.
 
     Subclasses must implement:
-        forward(batch) -> dict with at least {"loss": Tensor}
+        forward(batch) -> model-specific training output. The training step
+            interprets this output; PI0/PI0.5 return ``(loss, metrics)`` while
+            GR00T-N1.5 returns ``{"loss": loss}``.
+        training_loss(output) -> differentiable scalar loss extracted from that
+            model-specific output. Training steps retain control of backward,
+            optimizer updates, and any model-specific behavior.
         predict_action(batch) -> dict with at least {"action": Tensor}
 
     Registration:
@@ -184,7 +191,13 @@ class TrainablePolicy(nn.Module, ABC):
         return model
 
     @abstractmethod
-    def forward(self, batch: dict[str, Tensor]) -> dict[str, Tensor]: ...
+    def forward(self, batch: dict[str, Tensor]) -> ForwardOutputT: ...
+
+    @staticmethod
+    @abstractmethod
+    def training_loss(output: ForwardOutputT) -> Tensor:
+        """Extract the scalar loss without imposing a common forward output format."""
+        ...
 
     @abstractmethod
     def predict_action(self, batch: dict[str, Tensor]) -> dict[str, Tensor]: ...

@@ -41,10 +41,16 @@ ENTRY_POINTS = ["train_gr00t_n1_5.py", "train_pi.py"]
 TRAIN_DIR = Path(__file__).resolve().parents[3] / "flagos_robo" / "train"
 
 UTILS = TRAIN_DIR / "utils" / "train_utils.py"
+RUNTIME = TRAIN_DIR / "utils" / "training_runtime.py"
 
 
 def _tree(entry_point):
     source = (TRAIN_DIR / entry_point).read_text(encoding="utf-8")
+    return source, ast.parse(source)
+
+
+def _runtime_tree():
+    source = RUNTIME.read_text(encoding="utf-8")
     return source, ast.parse(source)
 
 
@@ -88,11 +94,7 @@ def _name_lines(tree, name):
 
 @pytest.mark.parametrize("entry_point", ENTRY_POINTS)
 def test_resume_from_is_actually_consumed(entry_point):
-    """The config field must reach ``load_training_state_fsdp2``.
-
-    Reading the attribute is not enough -- it has to be the thing that gates
-    the load and supplies its path.
-    """
+    """The entry point passes its resume path into the shared restore helper."""
     source, tree = _tree(entry_point)
 
     assert "config.system.checkpoint.resume_from" in source, (
@@ -101,21 +103,22 @@ def test_resume_from_is_actually_consumed(entry_point):
         "from step 0"
     )
 
-    load = _sole_call(tree, "load_training_state_fsdp2")
+    resume = _sole_call(tree, "resume_training")
+    assert "config.system.checkpoint.resume_from" in ast.get_source_segment(source, resume)
+
+    _, runtime_tree = _runtime_tree()
+    load = _sole_call(runtime_tree, "load_training_state_fsdp2")
     assert "resume_from" in {n.id for n in ast.walk(load) if isinstance(n, ast.Name)}, (
         "load_training_state_fsdp2 must be fed resume_from, not a hardcoded path"
     )
-
-    # ... and the load must be guarded, or an ordinary from-scratch run would
-    # try to read a checkpoint that does not exist.
-    guards = [
+    restore = next(
         node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.If)
-        and "resume_from" in {n.id for n in ast.walk(node.test) if isinstance(n, ast.Name)}
-        and node.lineno <= load.lineno <= node.body[-1].end_lineno
-    ]
-    assert guards, "the resume load must sit under an `if resume_from:` guard"
+        for node in runtime_tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "resume_training"
+    )
+    assert isinstance(restore.body[1], ast.If) and isinstance(
+        restore.body[1].body[0], ast.Return
+    ), "a fresh run must return before loading checkpoint state"
 
 
 @pytest.mark.parametrize("entry_point", ENTRY_POINTS)
@@ -126,7 +129,7 @@ def test_resume_restores_the_epoch_not_only_the_step(entry_point):
     a resumed run, so the resumed and uninterrupted runs see different data in
     a different order -- invisible in the loss curve, fatal to alignment.
     """
-    _, tree = _tree(entry_point)
+    _, tree = _runtime_tree()
 
     replay = _sole_call(tree, "replay_dataloader_to_step")
 
@@ -142,11 +145,10 @@ def test_resume_restores_the_epoch_not_only_the_step(entry_point):
     ), "`epoch` must be assigned from replay_dataloader_to_step()'s return value"
 
     # And the pre-loop set_epoch must run after that, otherwise it re-seeds 0.
-    set_epoch_lines = _call_lines(tree, "set_epoch")
+    _, entry_tree = _tree(entry_point)
+    set_epoch_lines = _call_lines(entry_tree, "set_epoch")
     assert set_epoch_lines, "no set_epoch() call -- sampler would never reshuffle"
-    assert any(ln > replay.lineno for ln in set_epoch_lines), (
-        "set_epoch() must be called after the epoch is recovered by the replay"
-    )
+    assert _sole_call(entry_tree, "resume_training").lineno < min(set_epoch_lines)
 
 
 @pytest.mark.parametrize("entry_point", ENTRY_POINTS)
@@ -158,7 +160,7 @@ def test_dataloader_replay_does_not_burn_the_restored_rng(entry_point):
     checkpoint just restored, so without a snapshot/restore around the replay
     the resumed run diverges from the uninterrupted one immediately.
     """
-    _, tree = _tree(entry_point)
+    _, tree = _runtime_tree()
 
     ser = _call_lines(tree, "serialize_rng_state")
     deser = _call_lines(tree, "deserialize_rng_state")
@@ -202,7 +204,9 @@ def test_save_persists_the_optimizer_state_resume_will_demand(entry_point):
     checkpoints that look complete, pass every other test, and raise
     ``FileNotFoundError`` the first time anyone resumes.
     """
-    _, tree = _tree(entry_point)
+    _, entry_tree = _tree(entry_point)
+    _sole_call(entry_tree, "save_training_checkpoint")
+    _, tree = _runtime_tree()
 
     save = _sole_call(tree, "save_checkpoint")
     assert "optimizer_state_dict" in _kwargs(save), (
@@ -214,7 +218,7 @@ def test_save_persists_the_optimizer_state_resume_will_demand(entry_point):
     getter = _sole_call(tree, "get_optimizer_state_dict")
     # Collective: every rank must call it, so it may not live inside a
     # rank-0-only block. Getting this wrong hangs the job instead of failing.
-    for node in ast.walk(_main(tree)):
+    for node in ast.walk(tree):
         if not isinstance(node, ast.If):
             continue
         test_names = {n.id for n in ast.walk(node.test) if isinstance(n, ast.Name)}

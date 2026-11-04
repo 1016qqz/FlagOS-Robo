@@ -47,10 +47,16 @@ ENTRY_POINTS = ["train_gr00t_n1_5.py", "train_pi.py"]
 REPO_ROOT = Path(__file__).resolve().parents[3]
 TRAIN_DIR = REPO_ROOT / "flagos_robo" / "train"
 RANDOM_UTILS = TRAIN_DIR / "utils" / "random_utils.py"
+RUNTIME = TRAIN_DIR / "utils" / "training_runtime.py"
 
 
 def _tree(entry_point):
     source = (TRAIN_DIR / entry_point).read_text(encoding="utf-8")
+    return source, ast.parse(source)
+
+
+def _runtime_tree():
+    source = RUNTIME.read_text(encoding="utf-8")
     return source, ast.parse(source)
 
 
@@ -78,14 +84,20 @@ def _kwarg(call, name):
 
 
 @pytest.mark.parametrize("entry_point", ENTRY_POINTS)
-def test_entry_point_builds_the_stateful_sampler(entry_point):
+def test_entry_point_uses_the_shared_training_lifecycle(entry_point):
+    _, tree = _tree(entry_point)
+    for helper in ("build_training_dataloader", "resume_training", "save_training_checkpoint"):
+        assert _calls(tree, helper), f"{entry_point} does not call {helper}"
+
+
+def test_shared_dataloader_builds_the_stateful_sampler():
     """A plain DistributedSampler has no offset to restore.
 
     Reverting this one line is the cheapest way to silently lose O(1) resume:
     the ``hasattr(sampler, "load_state_dict")`` guard in the resume block would
     simply stop matching and fall through to replay.
     """
-    _, tree = _tree(entry_point)
+    _, tree = _runtime_tree()
 
     assert _calls(tree, "StatefulDistributedSampler"), (
         "expected StatefulDistributedSampler() -- a plain DistributedSampler "
@@ -96,15 +108,14 @@ def test_entry_point_builds_the_stateful_sampler(entry_point):
     )
 
 
-@pytest.mark.parametrize("entry_point", ENTRY_POINTS)
-def test_sampler_state_is_handed_to_save_checkpoint(entry_point):
+def test_sampler_state_is_handed_to_save_checkpoint():
     """The offset has to reach the checkpoint, not just exist in memory.
 
     ``save_checkpoint`` writes ``dataloader_state.json`` only when it is given
     a ``dataloader_state``; omit the keyword and every checkpoint looks complete
     but resumes through the replay fallback.
     """
-    _, tree = _tree(entry_point)
+    _, tree = _runtime_tree()
 
     saves = _calls(tree, "save_checkpoint")
     assert saves, "no save_checkpoint() call"
@@ -119,8 +130,7 @@ def test_sampler_state_is_handed_to_save_checkpoint(entry_point):
         )
 
 
-@pytest.mark.parametrize("entry_point", ENTRY_POINTS)
-def test_resume_prefers_the_saved_offset_over_replay(entry_point):
+def test_resume_prefers_the_saved_offset_over_replay():
     """Both paths must exist, and the offset one must be the preferred branch.
 
     Keeping only the fast path would break checkpoints written before the
@@ -128,7 +138,7 @@ def test_resume_prefers_the_saved_offset_over_replay(entry_point):
     ``step``. So the shape asserted here is if/else, with ``load_state_dict``
     in the ``if`` body and ``replay_dataloader_to_step`` in the ``else``.
     """
-    _, tree = _tree(entry_point)
+    _, tree = _runtime_tree()
 
     load_calls = _calls(tree, "load_state_dict")
     assert load_calls, "resume never calls sampler.load_state_dict()"
@@ -157,15 +167,14 @@ def test_resume_prefers_the_saved_offset_over_replay(entry_point):
     )
 
 
-@pytest.mark.parametrize("entry_point", ENTRY_POINTS)
-def test_offset_path_does_not_snapshot_the_rng(entry_point):
+def test_offset_path_does_not_snapshot_the_rng():
     """Restoring an offset draws nothing, so bracketing it with a snapshot is wrong.
 
     The snapshot exists because *replaying* consumes RNG. If it migrated up to
     wrap the fast path too, it would restore a stale RNG over the one the
     checkpoint just loaded.
     """
-    _, tree = _tree(entry_point)
+    _, tree = _runtime_tree()
 
     # Only the inner if/else counts. The enclosing `if resume_from:` contains
     # both branches, so matching on "body mentions load_state_dict" alone would
@@ -207,10 +216,9 @@ def test_offset_path_does_not_snapshot_the_rng(entry_point):
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("entry_point", ENTRY_POINTS)
-def test_non_main_ranks_write_their_own_rng(entry_point):
+def test_non_main_ranks_write_their_own_rng():
     """rank 0 writing RNG for everyone means everyone resumes rank 0's stream."""
-    _, tree = _tree(entry_point)
+    _, tree = _runtime_tree()
 
     assert _calls(tree, "save_rng_state_only"), (
         "no save_rng_state_only() call -- only rank 0's RNG would be saved, so "
@@ -218,14 +226,13 @@ def test_non_main_ranks_write_their_own_rng(entry_point):
     )
 
 
-@pytest.mark.parametrize("entry_point", ENTRY_POINTS)
-def test_checkpoint_dir_is_computed_outside_the_main_process_guard(entry_point):
+def test_checkpoint_dir_is_computed_outside_the_main_process_guard():
     """The non-main ranks need the same directory to deposit RNG into.
 
     This is the easy half to get wrong: hoisting ``save_rng_state_only`` out of
     the guard is useless if the path it writes to is still computed inside it.
     """
-    _, tree = _tree(entry_point)
+    _, tree = _runtime_tree()
 
     dir_calls = _calls(tree, "get_step_checkpoint_dir")
     assert dir_calls, "no get_step_checkpoint_dir() call"

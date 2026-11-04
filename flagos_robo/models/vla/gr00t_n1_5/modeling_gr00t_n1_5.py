@@ -52,8 +52,12 @@ from flagos_robo.models.vla.gr00t_n1_5.gr00t_n1 import GR00TN15, GR00TN15Config
 GR00T_CONFIG_DIR = "gr00t_config"
 
 
-class Gr00tN15(TrainablePolicy):
+class Gr00tN15(TrainablePolicy[dict[str, Tensor]]):
     """Wrapper around GR00T N1.5 model for FlagScale training integration."""
+
+    @staticmethod
+    def training_loss(output: dict[str, Tensor]) -> Tensor:
+        return output["loss"]
 
     def __init__(self, config: Gr00tN15Config):
         super().__init__(config)

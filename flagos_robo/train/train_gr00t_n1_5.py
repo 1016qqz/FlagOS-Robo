@@ -19,9 +19,6 @@ import argparse
 import os
 import random
 import time
-from collections.abc import Iterator
-from contextlib import nullcontext
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -29,11 +26,6 @@ import torch
 import torch.distributed as dist
 from omegaconf import DictConfig, OmegaConf
 from torch.distributed._composable.fsdp import MixedPrecisionPolicy, fully_shard
-from torch.distributed.checkpoint.state_dict import (
-    StateDictOptions,
-    get_model_state_dict,
-    get_optimizer_state_dict,
-)
 from torch.distributed.device_mesh import init_device_mesh
 from torch.optim import Optimizer
 
@@ -57,22 +49,14 @@ from flagos_robo.train.utils.logging_utils import (
     format_big_number,
 )
 from flagos_robo.train.utils.optim_setup import setup_optimizer_and_scheduler
-from flagos_robo.train.utils.random_utils import deserialize_rng_state, serialize_rng_state
-from flagos_robo.train.utils.train_utils import (
-    StatefulDistributedSampler,
-    consumed_indices_for_step,
-    get_step_checkpoint_dir,
-    load_training_state_fsdp2,
-    replay_dataloader_to_step,
-    save_checkpoint,
-    save_rng_state_only,
-    update_last_checkpoint,
+from flagos_robo.train.utils.training_runtime import (
+    build_training_dataloader,
+    resume_training,
+    save_training_checkpoint,
 )
+from flagos_robo.train.utils.training_step import cycle_dataloader, run_training_step
 from flagos_robo.utils.determinism import (
-    determinism_enabled,
     enable_determinism,
-    make_dataloader_generator,
-    seed_worker,
 )
 from flagos_robo.utils.precision_dump import (
     append_step_log,
@@ -194,27 +178,6 @@ def _resolve_delta_timestamps(
 
 
 # datasets/utils.py
-def cycle(iterable: Any) -> Iterator[Any]:
-    """Create a dataloader-safe cyclical iterator.
-
-    This is an equivalent of `itertools.cycle` but is safe for use with
-    PyTorch DataLoaders with multiple workers.
-    See https://github.com/pytorch/pytorch/issues/23900 for details.
-
-    Args:
-        iterable: The iterable to cycle over.
-
-    Yields:
-        Items from the iterable, restarting from the beginning when exhausted.
-    """
-    iterator = iter(iterable)
-    while True:
-        try:
-            yield next(iterator)
-        except StopIteration:
-            iterator = iter(iterable)
-
-
 def format_train_tracker_step(train_tracker: MetricsTracker) -> str:
     def _format_meter_val(meter: AverageMeter) -> str:
         fmt = meter.fmt[1:] if meter.fmt.startswith(":") else meter.fmt
@@ -379,10 +342,6 @@ def make_preprocessor_from_config(
     )
 
 
-def has_method(cls: object, method_name: str) -> bool:
-    return hasattr(cls, method_name) and callable(getattr(cls, method_name))
-
-
 def update_policy(
     train_metrics: MetricsTracker,
     policy,
@@ -393,64 +352,20 @@ def update_policy(
     lr_scheduler=None,
     lock=None,
 ) -> MetricsTracker:
-    """
-    Performs a single training step to update the policy's weights.
-
-    This function executes the forward and backward passes, clips gradients, and steps the optimizer and
-    learning rate scheduler.
-
-    Args:
-        train_metrics: A MetricsTracker instance to record training statistics.
-        policy: The policy model to be trained (FSDP2-sharded).
-        batch: A batch of training data.
-        optimizer: The optimizer used to update the policy's parameters.
-        use_amp: Whether to use automatic mixed precision.
-        grad_clip_norm: The maximum norm for gradient clipping.
-        lr_scheduler: An optional learning rate scheduler.
-        lock: An optional lock for thread-safe optimizer updates.
-
-    Returns:
-        The updated MetricsTracker with new statistics for this step.
-    """
-    start_time = time.perf_counter()
-
-    optimizer.zero_grad()
-
-    autocast_context = (
-        torch.amp.autocast(get_platform().amp_device_type(), dtype=torch.bfloat16)
-        if use_amp
-        else nullcontext()
+    """Run the GR00T optimizer step, clearing gradients before each forward."""
+    return run_training_step(
+        train_metrics,
+        policy,
+        batch,
+        optimizer,
+        loss_from_output=policy.training_loss,
+        update_target=policy,
+        use_amp=use_amp,
+        grad_clip_norm=grad_clip_norm,
+        lr_scheduler=lr_scheduler,
+        lock=lock,
+        zero_grad_before=True,
     )
-
-    with autocast_context:
-        output = policy(batch)
-        loss = output["loss"]
-
-    loss.backward()
-
-    # Clip gradients (torch.nn.utils.clip_grad_norm_ works with DTensors in PyTorch ≥2.6)
-    clip_value = grad_clip_norm if grad_clip_norm > 0 else float("inf")
-    grad_norm = torch.nn.utils.clip_grad_norm_(policy.parameters(), clip_value)
-
-    with lock if lock is not None else nullcontext():
-        optimizer.step()
-
-    # Step through pytorch scheduler at every batch instead of epoch
-    if lr_scheduler is not None:
-        lr_scheduler.step()
-
-    # Update internal buffers if policy has update method
-    if has_method(policy, "update"):
-        policy.update()
-
-    train_metrics.loss = loss.item()
-    train_metrics.grad_norm = (
-        grad_norm.full_tensor().item() if hasattr(grad_norm, "full_tensor") else grad_norm.item()
-    )
-    train_metrics.lr = optimizer.param_groups[0]["lr"]
-    train_metrics.update_s = time.perf_counter() - start_time
-
-    return train_metrics
 
 
 def main(config: TrainConfig, seed: int):
@@ -504,39 +419,7 @@ def main(config: TrainConfig, seed: int):
         },
     }
 
-    num_workers = config.system.num_workers
-    shuffle = config.system.shuffle
-
-    # DistributedSampler ensures each rank gets different data. The Stateful
-    # subclass additionally tracks how many samples this rank has yielded, so a
-    # resume can jump straight to that offset (see the resume block below)
-    # instead of replaying the dataloader step by step.
-    sampler = StatefulDistributedSampler(
-        dataset,
-        num_replicas=world_size,
-        rank=rank,
-        shuffle=shuffle,
-        drop_last=False,
-    )
-
-    # D1-7: worker/generator seeding. Both are None unless FLAGOS_DETERMINISTIC
-    # is set, which keeps the default DataLoader behaviour (and its speed)
-    # untouched. Without these, each worker process re-seeds `random` and
-    # `numpy.random` independently of the parent, so any augmentation built on
-    # them differs between the two sides we are comparing.
-    _det_on = determinism_enabled()
-    dataloader = torch.utils.data.DataLoader(
-        dataset,
-        num_workers=num_workers,
-        batch_size=config.system.batch_size,
-        shuffle=False,  # Must be False when using sampler
-        sampler=sampler,
-        pin_memory=True,
-        drop_last=False,
-        prefetch_factor=2 if num_workers > 0 else None,
-        worker_init_fn=seed_worker if _det_on else None,
-        generator=make_dataloader_generator(seed) if _det_on else None,
-    )
+    dataloader, sampler = build_training_dataloader(dataset, config.system, seed)
 
     # Setup preprocessor
     preprocessor = None
@@ -576,40 +459,21 @@ def main(config: TrainConfig, seed: int):
     # Setup optimizer and scheduler (applies freeze config internally)
     optimizer, lr_scheduler = setup_optimizer_and_scheduler(policy, config)
 
-    dl_iter = cycle(dataloader)
+    dl_iter = cycle_dataloader(dataloader)
 
     effective_batch_size = config.system.batch_size * world_size
-    # Both are needed by the resume block below, which has to know where the
-    # epoch boundaries fall while it replays the dataloader.
-    epoch = 0
+    # Resume needs the epoch boundary to replay older checkpoints faithfully.
     samples_per_epoch = num_frames // effective_batch_size
 
-    step = 0
-    resume_from = config.system.checkpoint.resume_from
-    if resume_from:
-        step, dl_state = load_training_state_fsdp2(
-            Path(resume_from),
-            policy,
-            optimizer,
-            lr_scheduler,
-        )
-        if dl_state is not None and hasattr(sampler, "load_state_dict"):
-            # Preferred path: the sampler recorded how far into the epoch it
-            # had got, so restoring is a single offset assignment -- the cost
-            # does not grow with `step`. Nothing is drawn from the dataloader
-            # here, so the global RNG is left untouched and needs no snapshot.
-            sampler.load_state_dict(dl_state)
-            epoch = dl_state.get("epoch", 0)
-        else:
-            # Fallback for checkpoints written before the sampler carried
-            # state. Replaying consumes both the global RNG and the sampler's
-            # own epoch-seeded generator; the former is snapshotted around the
-            # replay, the latter an RNG snapshot cannot reach at all.
-            # See replay_dataloader_to_step.
-            saved_rng = serialize_rng_state()
-            epoch = replay_dataloader_to_step(dl_iter, sampler, step, samples_per_epoch)
-            deserialize_rng_state(saved_rng)
-        logger.info(f"Resumed from checkpoint at step {step} (epoch {epoch})")
+    step, epoch = resume_training(
+        config.system.checkpoint.resume_from,
+        policy,
+        optimizer,
+        lr_scheduler,
+        dl_iter,
+        sampler,
+        samples_per_epoch,
+    )
 
     dist.barrier()
 
@@ -713,49 +577,19 @@ def main(config: TrainConfig, seed: int):
             config.system.checkpoint.save_checkpoint
             and step % config.system.checkpoint.save_freq == 0
         ):
-            dist.barrier()
-            # get_model_state_dict and get_optimizer_state_dict are collectives — all ranks must call
-            options = StateDictOptions(full_state_dict=True, cpu_offload=True)
-            state_dict = get_model_state_dict(policy, options=options)
-            optimizer_state_dict = get_optimizer_state_dict(policy, optimizer, options=options)
-
-            # Computed on every rank, not just the main one: the non-main ranks
-            # need the same directory to deposit their own RNG files below.
-            output_dir = Path(config.system.checkpoint.output_directory)
-            checkpoint_dir = get_step_checkpoint_dir(output_dir, config.system.train_steps, step)
-
-            if is_main_process:
-                logger.info(f"Saving checkpoint at step {step}")
-                save_checkpoint(
-                    checkpoint_dir=checkpoint_dir,
-                    step=step,
-                    config=config,
-                    policy=policy,
-                    optimizer_state_dict=optimizer_state_dict,
-                    lr_scheduler=lr_scheduler,
-                    preprocessor=preprocessor,
-                    postprocessor=postprocessor,
-                    state_dict=state_dict,
-                    # The offset is derived from `step`, not read back out of
-                    # the sampler: the sampler's own index count runs ahead of
-                    # the training loop by the DataLoader's prefetch depth
-                    # (num_workers * prefetch_factor batches), which would make
-                    # the resumed run skip that many batches. See
-                    # StatefulDistributedSampler's docstring.
-                    dataloader_state=sampler.state_dict(
-                        consumed_indices_for_step(step, len(dataloader), config.system.batch_size)
-                    )
-                    if hasattr(sampler, "state_dict")
-                    else None,
-                )
-                update_last_checkpoint(checkpoint_dir)
-            else:
-                # RNG state is per-rank and cannot travel through the FSDP2
-                # collectives that make save_checkpoint rank-0-only, so each
-                # other rank writes its own file into the same directory.
-                save_rng_state_only(checkpoint_dir)
-
-            dist.barrier()
+            save_training_checkpoint(
+                config=config,
+                step=step,
+                policy=policy,
+                policy_to_save=policy,
+                optimizer=optimizer,
+                lr_scheduler=lr_scheduler,
+                preprocessor=preprocessor,
+                postprocessor=postprocessor,
+                dataloader=dataloader,
+                sampler=sampler,
+                is_main_process=is_main_process,
+            )
 
     if is_main_process:
         logger.info("Training completed")

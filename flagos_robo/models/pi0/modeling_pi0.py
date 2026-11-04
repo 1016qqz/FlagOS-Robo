@@ -896,8 +896,12 @@ class PI0Pytorch(nn.Module):  # see openpi `PI0Pytorch`
         return self.action_out_proj(suffix_out)
 
 
-class PI0Policy(TrainablePolicy):
+class PI0Policy(TrainablePolicy[tuple[Tensor, dict]]):
     """PI0 OpenPI Policy for LeRobot."""
+
+    @staticmethod
+    def training_loss(output: tuple[Tensor, dict]) -> Tensor:
+        return output[0]
 
     def __init__(self, config: PI0Config):
         config.validate_features()
