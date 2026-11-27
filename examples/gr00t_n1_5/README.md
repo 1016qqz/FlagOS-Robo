@@ -67,6 +67,30 @@ python examples/pi0/download.py \
 The model will be downloaded to (example with `/workspace/models`):
 - `/workspace/models/nvidia/GR00T-N1.5-3B`
 
+### Download Eagle Processor Assets
+
+In addition to the pretrained model weights, GR00T N1.5 requires
+the Eagle Processor assets from
+`lerobot/eagle2hg-processor-groot-n1p5`.
+
+These assets are downloaded automatically when needed. If access to
+Hugging Face Hub is restricted, download them in advance using an
+accessible endpoint (e.g., HF-Mirror):
+
+```sh
+export HF_LEROBOT_HOME=/workspace/models
+
+HF_ENDPOINT=https://hf-mirror.com python -c \
+    "from huggingface_hub import snapshot_download; snapshot_download(
+        repo_id='lerobot/eagle2hg-processor-groot-n1p5',
+        local_dir='${HF_LEROBOT_HOME}/lerobot/eagle2hg-processor-groot-n1p5'
+    )"
+```
+
+Ensure that `HF_LEROBOT_HOME` is set to the same directory when
+launching training, either as an environment variable or through
+`experiment.envs.HF_LEROBOT_HOME` in the experiment-level config.
+
 ## Training
 
 ### Prepare Dataset
@@ -107,7 +131,8 @@ For LIBERO Goal, set `data.data_path` to:
 - ModelScope: `/workspace/datasets/nv-community/LIBERO_LeRobot_v3/libero_goal`
 
 Ensure that `meta/info.json` contains `"codebase_version": "v3.0"` before training.
- ### Edit Config
+
+### Edit Config
 
 FlagOS-Robo uses a two-level configuration system:
 
