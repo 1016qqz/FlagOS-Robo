@@ -41,6 +41,7 @@ from flagos_robo.train.datasets.lerobot_dataset import (
     LeRobotDatasetMetadata,
 )
 from flagos_robo.train.datasets.utils import dataset_to_policy_features
+from flagos_robo.train.datasets.video_utils import get_safe_default_codec
 from flagos_robo.train.processor import PolicyProcessorPipeline
 from flagos_robo.train.train_config import TrainConfig
 from flagos_robo.train.utils.logging_utils import (
@@ -128,7 +129,7 @@ def make_dataset(config: TrainConfig, policy_config: PreTrainedConfig):
     # `pyav` crashes sometimes
     # torchcodec depends on NVIDIA NVDEC which is not available on all platforms (e.g. MUSA);
     # fall back to pyav for non-CUDA platforms.
-    video_backend = "torchcodec" if get_platform().name() == "cuda" else "pyav"
+    video_backend = get_safe_default_codec() if get_platform().name() == "cuda" else "pyav"
 
     # Leave the revision to None
     ds_meta = LeRobotDatasetMetadata(root=config.data.data_path, revision=None)

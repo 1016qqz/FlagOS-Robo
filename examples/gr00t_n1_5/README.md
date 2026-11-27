@@ -67,20 +67,47 @@ python examples/pi0/download.py \
 The model will be downloaded to (example with `/workspace/models`):
 - `/workspace/models/nvidia/GR00T-N1.5-3B`
 
+### Download Eagle Processor Assets
+
+In addition to the pretrained model weights, GR00T N1.5 requires
+the Eagle Processor assets from
+`lerobot/eagle2hg-processor-groot-n1p5`.
+
+These assets are downloaded automatically when needed. If access to
+Hugging Face Hub is restricted, download them in advance using an
+accessible endpoint (e.g., HF-Mirror):
+
+```sh
+export HF_LEROBOT_HOME=/workspace/models
+
+HF_ENDPOINT=https://hf-mirror.com python -c \
+    "from huggingface_hub import snapshot_download; snapshot_download(
+        repo_id='lerobot/eagle2hg-processor-groot-n1p5',
+        local_dir='${HF_LEROBOT_HOME}/lerobot/eagle2hg-processor-groot-n1p5'
+    )"
+```
+
+Ensure that `HF_LEROBOT_HOME` is set to the same directory when
+launching training, either as an environment variable or through
+`experiment.envs.HF_LEROBOT_HOME` in the experiment-level config.
+
 ## Training
 
 ### Prepare Dataset
 
 FlagOS-Robo uses the **LeRobotDataset v3.0** format. For detailed information about the format structure, see the [LeRobotDataset v3.0 documentation](https://huggingface.co/docs/lerobot/en/lerobot-dataset-v3).
 
-For example, to download the `libero_goal_no_noops` dataset:
+Note that `IPEC-COMMUNITY/libero_goal_no_noops_1.0.0_lerobot`
+uses LeRobotDataset v2.1 and must be converted to v3.0 before use.
+
+For example, download NVIDIA's LIBERO dataset in LeRobotDataset v3.0 format:
 
 **Using HuggingFace Hub:**
 
 ```sh
 cd FlagOS-Robo/
 python examples/pi0/download.py \
-    --repo_id IPEC-COMMUNITY/libero_goal_no_noops_1.0.0_lerobot \
+    --repo_id nvidia/LIBERO_LeRobot_v3 \
     --output_dir /workspace/datasets \
     --repo_type dataset \
     --source huggingface
@@ -91,14 +118,19 @@ python examples/pi0/download.py \
 ```sh
 cd FlagOS-Robo/
 python examples/pi0/download.py \
-    --repo_id IPEC-COMMUNITY/libero_goal_no_noops_1.0.0_lerobot \
+    --repo_id nv-community/LIBERO_LeRobot_v3 \
     --output_dir /workspace/datasets \
     --repo_type dataset \
     --source modelscope
 ```
 
-The dataset will be downloaded to (example with `/workspace/datasets`):
-- `/workspace/datasets/IPEC-COMMUNITY/libero_goal_no_noops_1.0.0_lerobot`
+Each LIBERO suite has its own dataset root.
+For LIBERO Goal, set `data.data_path` to:
+
+- HuggingFace Hub: `/workspace/datasets/nvidia/LIBERO_LeRobot_v3/libero_goal`
+- ModelScope: `/workspace/datasets/nv-community/LIBERO_LeRobot_v3/libero_goal`
+
+Ensure that `meta/info.json` contains `"codebase_version": "v3.0"` before training.
 
 ### Edit Config
 
@@ -161,7 +193,7 @@ Configure the following fields:
 - `model.optimizer.scheduler.decay_lr` - Final learning rate after decay (e.g., `1.0e-5`)
 
 **Data settings**:
-- `data.data_path` - Path to LeRobot dataset root (e.g., `/workspace/datasets/IPEC-COMMUNITY/libero_goal_no_noops_1.0.0_lerobot`)
+- `data.data_path` - Path to a LeRobotDataset v3.0 dataset root (e.g., `/workspace/datasets/nvidia/LIBERO_LeRobot_v3/libero_goal`)
 - `data.action_delta_indices` - List of action horizon indices to predict (default: `[0..15]` for 16-step horizon)
 - `data.preprocessor.steps[groot_pack_inputs].config.embodiment_tag` - Must match `model.embodiment_tag`
 - `data.preprocessor.steps[rename_observations_processor].config.rename_map` - Dictionary mapping dataset camera keys to policy keys (optional). Check the `features` key in your dataset's `meta/info.json` to determine the correct mapping:
